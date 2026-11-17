@@ -24,11 +24,12 @@ class CrudConfig(RoleRequiredMixin):
     extra_actions = ()    # (label, url_name, icon) extra buttons per row
     edit_roles = ()       # roles that see add/edit/delete buttons (default: allowed_roles)
     sort_map = {}         # column path -> ORM field(s) for columns that aren't plain model fields
+    header_actions = ()   # (label, url_name, icon, confirm text) POST buttons next to "Add" (admin only)
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx.update(title=self.title, columns=self.columns, url_prefix=self.url_prefix,
-                   extra_actions=self.extra_actions, singular=self.model._meta.verbose_name.title(),
+                   extra_actions=self.extra_actions, header_actions=self.header_actions, singular=self.model._meta.verbose_name.title(),
                    can_edit=user_role(self.request.user) in (self.edit_roles or self.allowed_roles))
         return ctx
 
@@ -137,12 +138,15 @@ def style_form(form):
 
 
 class _SaveMixin:
+    save_message = True
+
     def get_form(self, form_class=None):
         return style_form(super().get_form(form_class))
 
     def form_valid(self, form):
         resp = super().form_valid(form)
-        messages.success(self.request, f"{self.model._meta.verbose_name.title()} saved.")
+        if self.save_message:
+            messages.success(self.request, f"{self.model._meta.verbose_name.title()} saved.")
         return resp
 
 

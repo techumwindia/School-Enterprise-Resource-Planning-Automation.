@@ -4,9 +4,12 @@ from django import forms
 from django.contrib.auth.models import User
 from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.core.exceptions import PermissionDenied
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Q
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 
 from academics.models import ClassRoom
 from accounts.crud import make_crud
@@ -16,6 +19,7 @@ from attendance.models import attendance_percent
 from exams.models import Exam
 from fees.models import fee_ledger
 
+from .logins import ensure_logins, generate_password
 from .models import Student
 
 
@@ -39,6 +43,12 @@ class StudentForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["student_username"].section = "Login details"
         s = self.instance
+        if not s.pk:  # new admission: blank fields are generated automatically
+            self.fields["student_username"].help_text = "Leave blank to use the admission number."
+            self.fields["parent_username"].help_text = ("Leave blank to use the parent's phone number "
+                                                        "(links brothers/sisters automatically).")
+            self.fields["student_password"].help_text = self.fields["parent_password"].help_text = \
+                "Leave blank to generate a password."
         for prefix, user in (("student", s.user if s.pk else None), ("parent", s.parent_user if s.pk else None)):
             if user:
                 self.fields[f"{prefix}_username"].initial = user.username
@@ -55,8 +65,6 @@ class StudentForm(forms.ModelForm):
                 return  # existing parent login (sibling) – just link it
             self.add_error(f"{prefix}_username", "This username is already used by someone else.")
             return
-        if not current and not password:
-            self.add_error(f"{prefix}_password", "Enter a password for the new login.")
         if password and len(password) < 4:
             self.add_error(f"{prefix}_password", "Use at least 4 characters.")
 
@@ -88,6 +96,7 @@ class StudentForm(forms.ModelForm):
         user.username = username
 
         if not user.pk:
+            password = password or generate_password()
             user.set_password(password)
         elif password and password != user.profile.issued_password:
             user.set_password(password)
@@ -101,6 +110,7 @@ class StudentForm(forms.ModelForm):
 
     def save(self, commit=True):
         s = self.instance
+        self._is_new = not s.pk
         before_student = s.user if s.pk else None
         before_parent = s.parent_user if s.pk else None
         student = super().save(commit=False)
@@ -110,6 +120,8 @@ class StudentForm(forms.ModelForm):
         if commit:
             student.save()
             self.save_m2m()
+            if self._is_new:
+                ensure_logins(student)  # fill in any login left blank on a new admission
         return student
 
 
@@ -131,6 +143,20 @@ StudentViews = make_crud(
 )
 # Teachers and accountants can browse the student list too (edit buttons are still admin-only)
 StudentViews[0].allowed_roles = STAFF_ROLES
+StudentViews[0].header_actions = (
+    ("Create missing logins", "students:generate_logins", "bi-key",
+     "Create usernames and passwords for every active student and parent that doesn't have one yet?"),
+)
+
+
+def _after_admission(self):
+    messages.success(self.request, f"Admission saved for {self.object.full_name}. "
+                                   "Student and parent logins are shown below.")
+    return reverse("students:detail", args=[self.object.pk])
+
+
+StudentViews[1].get_success_url = _after_admission
+StudentViews[1].save_message = False
 
 
 def can_view_student(user, student):
@@ -161,6 +187,35 @@ def student_detail(request, pk):
         "payments": student.payments.select_related("fee__fee_type")[:20],
         "exams": exams,
     })
+
+
+@role_required(Role.ADMIN)
+def generate_logins(request):
+    """POST: create missing logins for one student (?student=pk) or for all active students."""
+    if request.method != "POST":
+        return redirect("students:student_list")
+    pk = request.POST.get("student")
+    qs = Student.objects.filter(pk=pk) if pk else Student.objects.filter(is_active=True)
+    qs = qs.filter(Q(user__isnull=True) | Q(parent_user__isnull=True)).order_by("pk")
+    batch_size = 50  # password hashing is deliberately slow; keep each click well under the server timeout
+    students = parents = 0
+    for s in qs[:batch_size]:
+        made = ensure_logins(s)
+        students += "student" in made
+        parents += "parent" in made
+    if pk:
+        messages.success(request, "Logins created." if students or parents else "This student already has logins.")
+        return redirect("students:detail", pk=pk)
+    remaining = qs.count()
+    msg = (f"Created {students} student logins and {parents} parent logins "
+           "(brothers/sisters with the same phone share one parent login). ")
+    if remaining:
+        messages.warning(request, msg + f"{remaining} students still need logins — click "
+                                        "“Create missing logins” again to continue.")
+    else:
+        messages.success(request, msg + "All students now have logins. "
+                                        "Open a student's profile to see the username and password.")
+    return redirect("students:student_list")
 
 
 @role_required(Role.ADMIN, Role.TEACHER, Role.ACCOUNTANT)

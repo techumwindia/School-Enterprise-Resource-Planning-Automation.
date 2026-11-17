@@ -12,21 +12,6 @@
 
 <div class="row g-3">
   <div class="col-lg-4">
-    <div class="card mb-3">
-      <div class="card-header">Profile</div>
-      <ul class="list-group list-group-flush small">
-        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Gender</span>{{ s.get_gender_display }}</li>
-        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Date of birth</span>{{ s.date_of_birth|date:"d M Y" }}</li>
-        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Blood group</span>{{ s.blood_group|default:"—" }}</li>
-        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">EMIS No.</span>{{ s.emis_no|default:"—" }}</li>
-        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Admitted</span>{{ s.admission_date|date:"d M Y" }}</li>
-        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Father</span>{{ s.father_name|default:"—" }}</li>
-        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Mother</span>{{ s.mother_name|default:"—" }}</li>
-        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Phone</span>{{ s.guardian_phone }}</li>
-        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">School bus</span>{{ s.uses_transport|yesno:"Yes,No" }}</li>
-        <li class="list-group-item"><span class="text-muted">Address</span><br>{{ s.address|default:"—"|linebreaksbr }}</li>
-      </ul>
-    </div>
     {% if user_role == 'admin' %}
     <div class="card mb-3">
       <div class="card-header d-flex justify-content-between align-items-center">
@@ -44,8 +29,27 @@
               {% else %}<span class="text-muted fst-italic">changed by user — set a new one in Edit</span>{% endif %}</div>
             {% if not u.is_active %}<div class="text-danger">Login disabled</div>{% endif %}
           {% else %}
-            <span class="text-muted fst-italic">No login yet — add one in Edit</span>
+            <form method="post" action="{% url 'students:generate_logins' %}" class="d-flex justify-content-between align-items-center">
+              {% csrf_token %}<input type="hidden" name="student" value="{{ s.pk }}">
+              <span class="text-muted fst-italic">No login yet</span>
+              <button class="btn btn-sm btn-primary"><i class="bi bi-magic"></i> Generate</button>
+            </form>
           {% endif %}
+    <div class="card mb-3">
+      <div class="card-header">Profile</div>
+      <ul class="list-group list-group-flush small">
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Gender</span>{{ s.get_gender_display }}</li>
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Date of birth</span>{{ s.date_of_birth|date:"d M Y" }}</li>
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Blood group</span>{{ s.blood_group|default:"—" }}</li>
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">EMIS No.</span>{{ s.emis_no|default:"—" }}</li>
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Admitted</span>{{ s.admission_date|date:"d M Y" }}</li>
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Father</span>{{ s.father_name|default:"—" }}</li>
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Mother</span>{{ s.mother_name|default:"—" }}</li>
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Phone</span>{{ s.guardian_phone }}</li>
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">School bus</span>{{ s.uses_transport|yesno:"Yes,No" }}</li>
+        <li class="list-group-item"><span class="text-muted">Address</span><br>{{ s.address|default:"—"|linebreaksbr }}</li>
+      </ul>
+    </div>
         </li>
         {% endfor %}
       </ul>

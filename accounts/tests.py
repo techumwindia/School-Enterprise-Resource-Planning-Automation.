@@ -253,9 +253,12 @@ class SmokeTest(TestCase):
         r = self.client.post(edit, self.student_post_data(s, student_username="teacher1", student_password="abcd"))
         self.assertEqual(r.status_code, 200)
         self.assertIn("student_username", r.context["form"].errors)
-        # a new login needs a password
+        # a new login without a typed password gets a generated one
         r = self.client.post(edit, self.student_post_data(s, parent_username="newparent"))
-        self.assertIn("parent_password", r.context["form"].errors)
+        self.assertEqual(r.status_code, 302)
+        s.refresh_from_db()
+        self.assertEqual(s.parent_user.username, "newparent")
+        self.assertEqual(len(s.parent_user.profile.issued_password), 8)
         # student and parent can't share one username
         r = self.client.post(edit, self.student_post_data(s, student_username="same1", student_password="abcd",
                                                          parent_username="same1", parent_password="abcd"))
@@ -273,3 +276,63 @@ class SmokeTest(TestCase):
         page = self.client.get(reverse("students:detail", args=[s.pk])).content.decode()
         self.assertIn("changed by user", page)
         self.assertNotIn("MySecret#2026", page)
+
+    # ---- Automatic logins on admission ----
+    def new_admission(self, adm, phone, **extra):
+        s = Student.objects.first()
+        data = {"admission_no": adm, "first_name": "Test", "last_name": "K", "gender": "M",
+                "date_of_birth": "2016-04-04", "classroom": s.classroom_id, "admission_date": "2026-06-01",
+                "father_name": "Kumar", "guardian_phone": phone, "is_active": "on"}
+        data.update(extra)
+        return self.client.post(reverse("students:student_add"), data)
+
+    def test_admission_generates_logins(self):
+        from django.contrib.auth import authenticate
+        self.login("admin")
+        r = self.new_admission("A2001", "+91 98765 43210")
+        st = Student.objects.get(admission_no="A2001")
+        self.assertRedirects(r, reverse("students:detail", args=[st.pk]))
+        self.assertEqual(st.user.username, "a2001")
+        self.assertEqual(st.parent_user.username, "9876543210")
+        self.assertEqual(st.parent_user.profile.role, "parent")
+        spw, ppw = st.user.profile.issued_password, st.parent_user.profile.issued_password
+        self.assertEqual(len(spw), 8)
+        self.assertIsNotNone(authenticate(username="a2001", password=spw))
+        self.assertIsNotNone(authenticate(username="9876543210", password=ppw))
+        page = self.client.get(reverse("students:detail", args=[st.pk])).content.decode()
+        self.assertIn(spw, page)
+        self.assertIn(ppw, page)
+        # brother admitted later with the same phone -> same parent login, password unchanged
+        self.new_admission("A2002", "9876543210")
+        bro = Student.objects.get(admission_no="A2002")
+        self.assertEqual(bro.parent_user, st.parent_user)
+        self.assertIsNotNone(authenticate(username="9876543210", password=ppw))
+        # typed values are respected; only blanks are generated
+        self.new_admission("A2003", "9000011111", student_username="ravi.k", student_password="ravi2026")
+        t = Student.objects.get(admission_no="A2003")
+        self.assertIsNotNone(authenticate(username="ravi.k", password="ravi2026"))
+        self.assertEqual(t.parent_user.username, "9000011111")
+
+    def test_phone_used_by_staff_falls_back(self):
+        from django.contrib.auth.models import User
+        User.objects.create_user("9111122222", password="x")  # a non-parent account with that name
+        self.login("admin")
+        self.new_admission("A3001", "9111122222")
+        self.assertEqual(Student.objects.get(admission_no="A3001").parent_user.username, "pa3001")
+
+    def test_create_missing_logins_button(self):
+        self.login("admin")
+        missing = Student.objects.filter(is_active=True, user__isnull=True).count()
+        self.assertGreater(missing, 100)
+        self.client.get(reverse("students:generate_logins"))  # GET does nothing
+        self.assertEqual(Student.objects.filter(user__isnull=True).count(), missing)
+        for _ in range(5):  # works in batches of 50 per click
+            r = self.client.post(reverse("students:generate_logins"))
+            self.assertRedirects(r, reverse("students:student_list"))
+        self.assertFalse(Student.objects.filter(is_active=True, user__isnull=True).exists())
+        self.assertFalse(Student.objects.filter(is_active=True, parent_user__isnull=True).exists())
+        # existing demo logins untouched
+        self.assertTrue(self.client.login(username="parent1", password="parent123"))
+        # teachers can't run it
+        self.login("teacher1")
+        self.assertEqual(self.client.post(reverse("students:generate_logins")).status_code, 403)

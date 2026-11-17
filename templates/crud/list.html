@@ -5,6 +5,10 @@
   <h1 class="page-title">{{ title }}</h1>
   <div class="d-flex gap-2">
     {% block list_buttons %}{% endblock %}
+    {% if can_edit %}{% for label, url, icon, confirm in header_actions %}
+    <form method="post" action="{% url url %}" onsubmit="return confirm('{{ confirm|escapejs }}')">{% csrf_token %}
+      <button class="btn btn-outline-primary"><i class="bi {{ icon }}"></i> {{ label }}</button></form>
+    {% endfor %}{% endif %}
     {% if can_edit %}<a class="btn btn-primary" href="{% url url_prefix|add:'_add' %}"><i class="bi bi-plus-lg"></i> Add</a>{% endif %}
   </div>
 </div>
