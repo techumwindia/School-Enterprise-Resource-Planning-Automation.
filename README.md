@@ -24,10 +24,9 @@ A complete school-level ERP web application built with **Django 5**. It covers d
 | Admin | Everything, including setup (years, subjects, fee types, users) |
 | Teacher | Students (view), classes, timetable, mark attendance, attendance report, enter marks, results |
 | Accountant | Students (view), collect fees, payments, dues, fee structure, salary/payslips |
-| Student | Own dashboard, profile, attendance, fees/receipts, published report cards |
-| Parent | Same as student, for each linked child |
+| Student / Parent | One shared login per student: dashboard, profile, attendance, fees/receipts, published report cards |
 
-Linking logins: create the user under **User Accounts**, then open the student/staff record and pick it in *User* (student login), *Parent user* (parent login) or *User* on a staff record (teacher login).
+Student logins are created automatically when an admission is saved: username = admission number (A1121 → `a1121`) plus a random password, shown on the student's profile. The student and the parent use the same login. Change it from the student's **Edit** page; use **Create missing logins** on the Students list for students added before. Teacher logins: create the user under **User Accounts**, then pick it in *User* on the staff record.
 
 ## Run it locally (Windows / Linux)
 
@@ -47,8 +46,7 @@ Open http://127.0.0.1:8000 and sign in. Demo logins created by `seed_demo`:
 | admin | admin123 | Admin |
 | teacher1 | teacher123 | Teacher (class teacher of 1-A) |
 | accountant | accounts123 | Accountant |
-| student1 | student123 | Student (class 10-A) |
-| parent1 | parent123 | Parent of student1 |
+| student1 | student123 | Student & parent login (class 10-A) |
 
 For a real school, skip `seed_demo` and create the first admin with `python manage.py createsuperuser`. Then set up in this order: **Academic Years → Subjects → Staff → Classes → Students → Fee Types → Fee Structure → Exams**.
 

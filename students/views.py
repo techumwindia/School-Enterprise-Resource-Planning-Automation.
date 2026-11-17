@@ -6,7 +6,6 @@ from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.core.exceptions import PermissionDenied
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -24,15 +23,12 @@ from .models import Student
 
 
 class StudentForm(forms.ModelForm):
-    """Student details plus the student's and parent's login (username + password)."""
-    student_username = forms.CharField(required=False, max_length=150, validators=[UnicodeUsernameValidator()],
-                                       help_text="Leave blank if the student doesn't need a login.")
-    student_password = forms.CharField(required=False, max_length=128,
-                                       help_text="Type a new password to set or change it.")
-    parent_username = forms.CharField(required=False, max_length=150, validators=[UnicodeUsernameValidator()],
-                                      help_text="Use the same parent username for brothers/sisters.")
-    parent_password = forms.CharField(required=False, max_length=128,
-                                      help_text="Type a new password to set or change it.")
+    """Student details plus one login shared by the student and the parent."""
+    login_username = forms.CharField(label="Username", required=False, max_length=150,
+                                     validators=[UnicodeUsernameValidator()],
+                                     help_text="Used by both the student and the parent.")
+    login_password = forms.CharField(label="Password", required=False, max_length=128,
+                                     help_text="Type a new password to set or change it.")
 
     class Meta:
         model = Student
@@ -41,87 +37,59 @@ class StudentForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["student_username"].section = "Login details"
+        self.fields["login_username"].section = "Login (student & parent)"
         s = self.instance
         if not s.pk:  # new admission: blank fields are generated automatically
-            self.fields["student_username"].help_text = "Leave blank to use the admission number."
-            self.fields["parent_username"].help_text = ("Leave blank to use the parent's phone number "
-                                                        "(links brothers/sisters automatically).")
-            self.fields["student_password"].help_text = self.fields["parent_password"].help_text = \
-                "Leave blank to generate a password."
-        for prefix, user in (("student", s.user if s.pk else None), ("parent", s.parent_user if s.pk else None)):
-            if user:
-                self.fields[f"{prefix}_username"].initial = user.username
-                self.fields[f"{prefix}_password"].initial = user.profile.issued_password
-
-    def _check(self, prefix, current, role):
-        username = self.cleaned_data.get(f"{prefix}_username", "").strip()
-        password = self.cleaned_data.get(f"{prefix}_password", "")
-        if not username:
-            return
-        other = User.objects.filter(username__iexact=username).exclude(pk=getattr(current, "pk", None)).first()
-        if other:
-            if role == Role.PARENT and user_role(other) == Role.PARENT:
-                return  # existing parent login (sibling) – just link it
-            self.add_error(f"{prefix}_username", "This username is already used by someone else.")
-            return
-        if password and len(password) < 4:
-            self.add_error(f"{prefix}_password", "Use at least 4 characters.")
+            self.fields["login_username"].help_text = "Leave blank to use the admission number."
+            self.fields["login_password"].help_text = "Leave blank to generate a password."
+        elif s.user:
+            self.fields["login_username"].initial = s.user.username
+            self.fields["login_password"].initial = s.user.profile.issued_password
+        else:
+            self.fields["login_username"].help_text = "No login yet. Enter a username, or leave blank."
 
     def clean(self):
         data = super().clean()
-        su = data.get("student_username", "").strip().lower()
-        pu = data.get("parent_username", "").strip().lower()
-        if su and su == pu:
-            self.add_error("parent_username", "Student and parent need different usernames.")
-        s = self.instance
-        self._check("student", s.user if s.pk else None, Role.STUDENT)
-        self._check("parent", s.parent_user if s.pk else None, Role.PARENT)
+        username = data.get("login_username", "").strip()
+        password = data.get("login_password", "")
+        current = self.instance.user if self.instance.pk else None
+        if username and User.objects.filter(username__iexact=username).exclude(
+                pk=getattr(current, "pk", None)).exists():
+            self.add_error("login_username", "This username is already used by someone else.")
+        if password and len(password) < 4:
+            self.add_error("login_password", "Use at least 4 characters.")
         return data
 
-    def _login(self, prefix, current, role, first, last):
-        """Create, rename, re-link or update the login for this student or parent."""
-        username = self.cleaned_data.get(f"{prefix}_username", "").strip()
-        password = self.cleaned_data.get(f"{prefix}_password", "")
-        if not username:
-            return None  # login unlinked from this student (the account itself is kept)
-
-        same_name = User.objects.filter(username__iexact=username).first()
-        if same_name:
-            user = same_name  # this student's own login, or a sibling's parent login
-        elif current and not (role == Role.PARENT and current.children.exclude(pk=self.instance.pk).exists()):
-            user = current    # rename this login
-        else:
-            user = User(first_name=first, last_name=last)  # new login (or this child gets its own parent login)
-        user.username = username
-
-        if not user.pk:
-            password = password or generate_password()
-            user.set_password(password)
-        elif password and password != user.profile.issued_password:
-            user.set_password(password)
-        user.save()
-        profile = user.profile
-        profile.role = role
-        if password:
-            profile.issued_password = password
-        profile.save()
-        return user
-
     def save(self, commit=True):
-        s = self.instance
-        self._is_new = not s.pk
-        before_student = s.user if s.pk else None
-        before_parent = s.parent_user if s.pk else None
+        is_new = not self.instance.pk
+        current = self.instance.user if self.instance.pk else None
         student = super().save(commit=False)
-        student.user = self._login("student", before_student, Role.STUDENT, student.first_name, student.last_name)
-        parent_name = student.father_name or student.mother_name or f"Parent of {student.first_name}"
-        student.parent_user = self._login("parent", before_parent, Role.PARENT, parent_name, "")
+        username = self.cleaned_data.get("login_username", "").strip()
+        password = self.cleaned_data.get("login_password", "")
+
+        if username:
+            user = current or User(first_name=student.first_name[:150], last_name=student.last_name[:150])
+            user.username = username
+            if not user.pk:
+                password = password or generate_password()
+                user.set_password(password)
+            elif password and password != user.profile.issued_password:
+                user.set_password(password)
+            user.save()
+            profile = user.profile
+            profile.role = Role.STUDENT
+            if password:
+                profile.issued_password = password
+            profile.save()
+            student.user = user
+        elif not is_new:
+            student.user = None  # login removed from this student (the account itself is kept)
+
         if commit:
             student.save()
             self.save_m2m()
-            if self._is_new:
-                ensure_logins(student)  # fill in any login left blank on a new admission
+            if is_new and not student.user_id:
+                ensure_logins(student)  # username left blank on a new admission -> generate it
         return student
 
 
@@ -145,13 +113,13 @@ StudentViews = make_crud(
 StudentViews[0].allowed_roles = STAFF_ROLES
 StudentViews[0].header_actions = (
     ("Create missing logins", "students:generate_logins", "bi-key",
-     "Create usernames and passwords for every active student and parent that doesn't have one yet?"),
+     "Create a username and password for every active student that doesn't have one yet?"),
 )
 
 
 def _after_admission(self):
     messages.success(self.request, f"Admission saved for {self.object.full_name}. "
-                                   "Student and parent logins are shown below.")
+                                   "The login for the student and parent is shown below.")
     return reverse("students:detail", args=[self.object.pk])
 
 
@@ -169,8 +137,7 @@ def can_view_student(user, student):
 
 @login_required
 def student_detail(request, pk):
-    student = get_object_or_404(Student.objects.select_related(
-        "classroom", "user__profile", "parent_user__profile"), pk=pk)
+    student = get_object_or_404(Student.objects.select_related("classroom", "user__profile"), pk=pk)
     if not can_view_student(request.user, student):
         raise PermissionDenied
     role = user_role(request.user)
@@ -180,7 +147,7 @@ def student_detail(request, pk):
     att = student.attendance.all()
     return render(request, "students/detail.html", {
         "s": student,
-        "logins": [("Student login", student.user), ("Parent login", student.parent_user)],
+        "login": student.user,
         "attendance_pct": attendance_percent(att),
         "recent_attendance": att[:30],
         "ledger": fee_ledger(student),
@@ -196,25 +163,21 @@ def generate_logins(request):
         return redirect("students:student_list")
     pk = request.POST.get("student")
     qs = Student.objects.filter(pk=pk) if pk else Student.objects.filter(is_active=True)
-    qs = qs.filter(Q(user__isnull=True) | Q(parent_user__isnull=True)).order_by("pk")
-    batch_size = 50  # password hashing is deliberately slow; keep each click well under the server timeout
-    students = parents = 0
+    qs = qs.filter(user__isnull=True).order_by("pk")
+    batch_size = 100  # password hashing is deliberately slow; keep each click well under the server timeout
+    made = 0
     for s in qs[:batch_size]:
-        made = ensure_logins(s)
-        students += "student" in made
-        parents += "parent" in made
+        made += bool(ensure_logins(s))
     if pk:
-        messages.success(request, "Logins created." if students or parents else "This student already has logins.")
+        messages.success(request, "Login created." if made else "This student already has a login.")
         return redirect("students:detail", pk=pk)
     remaining = qs.count()
-    msg = (f"Created {students} student logins and {parents} parent logins "
-           "(brothers/sisters with the same phone share one parent login). ")
     if remaining:
-        messages.warning(request, msg + f"{remaining} students still need logins — click "
-                                        "“Create missing logins” again to continue.")
+        messages.warning(request, f"Created {made} logins. {remaining} students still need one — click "
+                                  "“Create missing logins” again to continue.")
     else:
-        messages.success(request, msg + "All students now have logins. "
-                                        "Open a student's profile to see the username and password.")
+        messages.success(request, f"Created {made} logins. Every student now has a login "
+                                  "(shared by student and parent). Open a profile to see it.")
     return redirect("students:student_list")
 
 

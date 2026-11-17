@@ -106,4 +106,4 @@ code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$PUBLIC_PORT/log
 echo
 echo "Login page check: HTTP $code (200 = working)"
 echo "Open:  http://$IP:$PUBLIC_PORT"
-echo "Logins: admin/admin123  teacher1/teacher123  accountant/accounts123  student1/student123  parent1/parent123"
+echo "Logins: admin/admin123  teacher1/teacher123  accountant/accounts123  student1/student123 (student & parent)"

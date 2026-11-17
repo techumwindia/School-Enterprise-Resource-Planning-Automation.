@@ -201,13 +201,12 @@ class Command(BaseCommand):
         staff[0].save()
         stu = students[-12]  # first student of class 10
         stu.user = self._user("student1", "student123", Role.STUDENT, stu.first_name, stu.last_name)
-        stu.parent_user = self._user("parent1", "parent123", Role.PARENT, stu.father_name, "")
         stu.save()
 
         self.stdout.write(self.style.SUCCESS(
             f"Demo data loaded: {len(classes)} classes, {len(students)} students, {len(staff) + 1} staff.\n"
             "Logins: admin/admin123 · teacher1/teacher123 · accountant/accounts123 · "
-            "student1/student123 · parent1/parent123"))
+            "student1/student123 (student & parent)"))
 
     def _user(self, username, password, role, first, last, superuser=False):
         u, _ = User.objects.get_or_create(username=username, defaults={"first_name": first, "last_name": last})
