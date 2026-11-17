@@ -72,7 +72,6 @@ sudo mysql -e "CREATE DATABASE school_erp CHARACTER SET utf8mb4; \
 
 # 3. Settings
 cp .env.example .env && nano .env      # secret key, domain, school name, DB password
-set -a; . ./.env; set +a
 venv/bin/python manage.py migrate
 venv/bin/python manage.py collectstatic --noinput
 venv/bin/python manage.py createsuperuser

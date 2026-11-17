@@ -53,9 +53,9 @@ DJANGO_ALLOWED_HOSTS=$IP,127.0.0.1,localhost
 DJANGO_CSRF_TRUSTED_ORIGINS=http://$IP:$PUBLIC_PORT
 DJANGO_SECURE_COOKIES=False
 DB_ENGINE=sqlite
-SCHOOL_NAME=Demo Matriculation Higher Secondary School
-SCHOOL_ADDRESS=Main Road, Sivakasi, Tamil Nadu
-SCHOOL_PHONE=+91 00000 00000
+SCHOOL_NAME="Demo Matriculation Higher Secondary School"
+SCHOOL_ADDRESS="Main Road, Sivakasi, Tamil Nadu"
+SCHOOL_PHONE="+91 00000 00000"
 SCHOOL_EMAIL=office@school.example
 EOF
 fi
@@ -63,7 +63,7 @@ fi
 sed -i "s#^DJANGO_CSRF_TRUSTED_ORIGINS=.*#DJANGO_CSRF_TRUSTED_ORIGINS=http://$IP:$PUBLIC_PORT#" .env
 
 echo "==> Database, demo data, static files"
-set -a; . ./.env; set +a
+# (Django reads .env itself via python-dotenv; no need to source it in bash)
 venv/bin/python manage.py migrate --noinput -v0
 venv/bin/python manage.py seed_demo
 venv/bin/python manage.py collectstatic --noinput -v0
