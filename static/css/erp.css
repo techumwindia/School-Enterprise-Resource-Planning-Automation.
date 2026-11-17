@@ -94,9 +94,9 @@ body { background: var(--erp-bg); color: var(--erp-ink); font-family: "Segoe UI"
   .doc { box-shadow: none; padding: 0; }
 }
 
-/* Popup windows: detail views take 80% of the screen */
-.modal-dialog.popup-large { max-width: 80vw; width: 80vw; }
-.modal-dialog.popup-large .modal-content { height: 80vh; }
+/* Popup windows: detail views take 90% of the screen */
+.modal-dialog.popup-large { max-width: 90vw; width: 90vw; margin: 5vh auto; }
+.modal-dialog.popup-large .modal-content { height: 90vh; }
 @media (max-width: 767.98px) {
   .modal-dialog.popup-large { max-width: 96vw; width: 96vw; margin: 2vh auto; }
   .modal-dialog.popup-large .modal-content { height: 92vh; }
