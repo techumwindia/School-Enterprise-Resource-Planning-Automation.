@@ -3,6 +3,7 @@ Small generic CRUD layer so each module only declares its model, form fields
 and list columns. Templates: templates/crud/list.html, form.html, confirm_delete.html.
 """
 from django.contrib import messages
+from django.core.exceptions import FieldDoesNotExist
 from django.db.models import Q
 from django.urls import path, reverse
 from django.views.generic import CreateView, DeleteView, ListView, UpdateView
@@ -22,6 +23,7 @@ class CrudConfig(RoleRequiredMixin):
     ordering = None
     extra_actions = ()    # (label, url_name, icon) extra buttons per row
     edit_roles = ()       # roles that see add/edit/delete buttons (default: allowed_roles)
+    sort_map = {}         # column path -> ORM field(s) for columns that aren't plain model fields
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -34,15 +36,52 @@ class CrudConfig(RoleRequiredMixin):
         return reverse(f"{self.url_prefix}_list")
 
 
+def orm_path(model, path):
+    """Turn a column path like 'class_teacher.name' into 'class_teacher__name' if it is a real field chain."""
+    parts = []
+    for part in path.split("."):
+        try:
+            field = model._meta.get_field(part)
+        except FieldDoesNotExist:
+            return None
+        parts.append(part)
+        model = getattr(field, "related_model", None) or model
+    return "__".join(parts)
+
+
 class CrudList(CrudConfig, ListView):
     template_name = "crud/list.html"
     paginate_by = 25
+
+    def sort_fields(self, path):
+        """ORM fields to order by for a column, or None if the column can't be sorted."""
+        if path in self.sort_map:
+            f = self.sort_map[path]
+            return (f,) if isinstance(f, str) else tuple(f)
+        f = orm_path(self.model, path)
+        return (f,) if f else None
+
+    def current_sort(self):
+        """(column index, descending) from ?sort=3 or ?sort=-3, or (None, False)."""
+        raw = self.request.GET.get("sort", "")
+        desc = raw.startswith("-")
+        try:
+            idx = int(raw.lstrip("-"))
+        except ValueError:
+            return None, False
+        if not (0 <= idx < len(self.columns)) or not self.sort_fields(self.columns[idx][1]):
+            return None, False
+        return idx, desc
 
     def get_queryset(self):
         qs = self.model.objects.all()
         if self.select_related:
             qs = qs.select_related(*self.select_related)
-        if self.ordering:
+        idx, desc = self.current_sort()
+        if idx is not None:
+            fields = self.sort_fields(self.columns[idx][1])
+            qs = qs.order_by(*[f"-{f}" if desc else f for f in fields], "-pk" if desc else "pk")
+        elif self.ordering:
             qs = qs.order_by(*self.ordering)
         q = self.request.GET.get("q", "").strip()
         if q and self.search_fields:
@@ -67,6 +106,19 @@ class CrudList(CrudConfig, ListView):
         params = self.request.GET.copy()
         params.pop("page", None)
         ctx["querystring"] = params.urlencode()
+
+        # Clickable column headings: click to sort A→Z, click again for Z→A
+        params.pop("sort", None)
+        base = params.urlencode()
+        cur, desc = self.current_sort()
+        headers = []
+        for i, (label, path) in enumerate(self.columns):
+            h = {"label": label, "sortable": bool(self.sort_fields(path)), "active": i == cur, "desc": desc}
+            if h["sortable"]:
+                nxt = f"-{i}" if (i == cur and not desc) else str(i)
+                h["url"] = "?" + (base + "&" if base else "") + f"sort={nxt}"
+            headers.append(h)
+        ctx["headers"] = headers
         return ctx
 
 
@@ -111,12 +163,13 @@ class CrudDelete(CrudConfig, DeleteView):
 
 
 def make_crud(model, *, title, url_prefix, columns, fields=None, form_class=None, search_fields=(),
-              list_filters=(), roles=(Role.ADMIN,), ordering=None, select_related=(), extra_actions=()):
+              list_filters=(), roles=(Role.ADMIN,), ordering=None, select_related=(), extra_actions=(),
+              sort_map=None):
     """Build List/Create/Update/Delete view classes for a model in one call."""
     attrs = dict(model=model, title=title, url_prefix=url_prefix, columns=columns,
                  search_fields=search_fields, list_filters=list_filters, allowed_roles=roles,
                  ordering=ordering, select_related=select_related, extra_actions=extra_actions,
-                 edit_roles=roles)
+                 edit_roles=roles, sort_map=sort_map or {})
     form_attrs = dict(attrs, **({"form_class": form_class} if form_class else {"fields": fields}))
     name = model.__name__
     return (

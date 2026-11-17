@@ -147,3 +147,35 @@ class SmokeTest(TestCase):
             "is_active": "on"})
         self.assertEqual(resp.status_code, 302, getattr(resp, "context", {}) and resp.context["form"].errors)
         self.assertTrue(Student.objects.filter(admission_no="NEW1").exists())
+
+    def test_sort_by_column_headings(self):
+        self.login("admin")
+        url = reverse("students:student_list")
+        # columns: 0 Adm. No, 1 Name, 2 Class, 3 Roll, ...
+        names = lambda r: [s.first_name for s in r.context["object_list"]]
+        asc = self.client.get(url + "?sort=1")
+        desc = self.client.get(url + "?sort=-1")
+        self.assertEqual(names(asc), sorted(names(asc)))
+        self.assertEqual(names(desc), sorted(names(desc), reverse=True))
+        adm = [s.admission_no for s in self.client.get(url + "?sort=-0").context["object_list"]]
+        self.assertEqual(adm, sorted(adm, reverse=True))
+        # sort survives the class filter and a bad value is ignored
+        cls = Student.objects.first().classroom_id
+        r = self.client.get(url + f"?classroom={cls}&sort=3")
+        rolls = [s.roll_no for s in r.context["object_list"]]
+        self.assertEqual(rolls, sorted(rolls))
+        self.assertEqual(self.client.get(url + "?sort=abc").status_code, 200)
+        self.assertEqual(self.client.get(url + "?sort=99").status_code, 200)
+
+    def test_every_list_column_sorts_without_error(self):
+        self.login("admin")
+        for name in ["students:student_list", "academics:class_list", "academics:subject_list",
+                     "academics:year_list", "academics:tt_list", "staff:staff_list", "staff:salary_list",
+                     "fees:type_list", "fees:structure_list", "exams:exam_list", "notices:notice_list",
+                     "notices:event_list", "accounts:user_list"]:
+            url = reverse(name)
+            for h_i, h in enumerate(self.client.get(url).context["headers"]):
+                if h["sortable"]:
+                    for direction in ("", "-"):
+                        r = self.client.get(f"{url}?sort={direction}{h_i}")
+                        self.assertEqual(r.status_code, 200, f"{name} sort {direction}{h_i}")

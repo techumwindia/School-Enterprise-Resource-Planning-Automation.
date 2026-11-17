@@ -31,6 +31,7 @@ ClassViews = make_crud(
     columns=(("Class", "__str__"), ("Class teacher", "class_teacher.name"), ("Room", "room_no"),
              ("Students", "student_count")),
     search_fields=("grade", "section"), select_related=("class_teacher",),
+    sort_map={"__str__": ("order", "section")},
     extra_actions=(("View", "academics:class_detail", "bi-eye"),),
 )
 

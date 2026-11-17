@@ -34,7 +34,7 @@
   <div class="table-responsive">
     <table class="table table-hover mb-0">
       <thead><tr>
-        {% for label, path in columns %}<th>{{ label }}</th>{% endfor %}
+        {% for h in headers %}<th>{% if h.sortable %}<a class="sort-link{% if h.active %} active{% endif %}" href="{{ h.url }}" title="Sort by {{ h.label }}">{{ h.label }} <i class="bi {% if h.active %}{% if h.desc %}bi-caret-down-fill{% else %}bi-caret-up-fill{% endif %}{% else %}bi-chevron-expand{% endif %}"></i></a>{% else %}{{ h.label }}{% endif %}</th>{% endfor %}
         <th class="text-end">Actions</th>
       </tr></thead>
       <tbody>

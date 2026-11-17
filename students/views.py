@@ -36,6 +36,8 @@ StudentViews = make_crud(
     list_filters=(("classroom", "classroom_id", _class_choices, "Class"),
                   ("active", "is_active", lambda: [("1", "Active"), ("0", "Left")], "Status")),
     select_related=("classroom",), roles=(Role.ADMIN,),
+    sort_map={"full_name": ("first_name", "last_name"),
+              "classroom": ("classroom__order", "classroom__section", "roll_no")},
     extra_actions=(("Profile", "students:detail", "bi-person-vcard"),),
 )
 # Teachers and accountants can browse the student list too (edit buttons are still admin-only)

@@ -99,6 +99,7 @@ UserViews = make_crud(
     search_fields=("username", "first_name", "last_name", "email"),
     list_filters=(("role", "profile__role", _user_choices, "Role"),),
     ordering=("username",), select_related=("profile",),
+    sort_map={"get_full_name": ("first_name", "last_name")},
 )
 
 
