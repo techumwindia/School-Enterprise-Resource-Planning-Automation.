@@ -1,30 +1,55 @@
-{% for b in blocks %}
-<div class="mb-4">
-  <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-2">
-    <h3 class="h6 fw-bold mb-0">{{ b.exam }} {% if not b.exam.is_published %}<span class="badge text-bg-secondary fw-normal">Not published</span>{% endif %}</h3>
-    <div class="d-flex gap-2">
-      <a class="btn btn-sm btn-light" href="{% url 'exams:report_card' b.exam.pk s.pk %}" target="_blank"><i class="bi bi-eye"></i> Report card</a>
-      <button class="btn btn-sm btn-primary" data-pdf="{% url 'exams:report_card' b.exam.pk s.pk %}" data-filename="Report-card-{{ s.admission_no }}-{{ b.exam.name }}.pdf"><i class="bi bi-download"></i> PDF</button>
+{% if years %}
+<ul class="nav nav-pills mb-3 gap-1" role="tablist">
+  {% for y in years %}
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if forloop.first %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#res-{{ y.key }}" type="button" role="tab">
+      {{ y.label }}{% if y.current %} <span class="badge text-bg-light">current</span>{% endif %}
+      <span class="small opacity-75">· {{ y.blocks|length }} exam{{ y.blocks|length|pluralize }}</span>
+    </button>
+  </li>
+  {% endfor %}
+</ul>
+
+<div class="tab-content">
+{% for y in years %}
+  <div class="tab-pane fade {% if forloop.first %}show active{% endif %}" id="res-{{ y.key }}" role="tabpanel">
+    {# Year overview: one row per exam #}
+    <div class="table-responsive mb-4"><table class="table table-sm align-middle">
+      <thead><tr><th>Exam {{ y.label }}</th><th class="text-end">Total</th><th class="text-end">%</th><th class="text-center">Grade</th><th class="text-center">Rank</th><th class="text-center">Result</th></tr></thead>
+      <tbody>{% for b in y.blocks %}
+        <tr><td><a href="#exam-{{ b.exam.pk }}">{{ b.exam.name }}</a>{% if not b.exam.is_published %} <span class="badge text-bg-secondary fw-normal">Not published</span>{% endif %}</td>
+          <td class="text-end">{{ b.total|floatformat:"-1" }} / {{ b.maximum }}</td><td class="text-end fw-semibold">{{ b.pct|default:"—" }}</td>
+          <td class="text-center">{{ b.grade }}</td><td class="text-center">{{ b.rank|default:"—" }}</td>
+          <td class="text-center"><span class="badge {% if b.result == 'PASS' %}text-bg-success{% else %}text-bg-danger{% endif %}">{{ b.result }}</span></td></tr>
+      {% endfor %}</tbody>
+      {% if y.blocks|length > 1 %}<tfoot><tr class="fw-semibold"><td>Average</td><td></td><td class="text-end">{{ y.avg }}</td><td colspan="3"></td></tr></tfoot>{% endif %}
+    </table></div>
+
+    {% for b in y.blocks %}
+    <div class="mb-4" id="exam-{{ b.exam.pk }}">
+      <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-2">
+        <h3 class="h6 fw-bold mb-0">{{ b.exam }}</h3>
+        <div class="d-flex gap-2">
+          <a class="btn btn-sm btn-light" href="{% url 'exams:report_card' b.exam.pk s.pk %}" target="_blank"><i class="bi bi-eye"></i> Report card</a>
+          <button class="btn btn-sm btn-primary" data-pdf="{% url 'exams:report_card' b.exam.pk s.pk %}" data-filename="Report-card-{{ s.admission_no }}-{{ b.exam.name }}-{{ y.label }}.pdf"><i class="bi bi-download"></i> PDF</button>
+        </div>
+      </div>
+      <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
+        <thead><tr><th>Subject</th><th class="text-center">Max</th><th class="text-center">Marks</th><th class="text-center">%</th><th class="text-center">Grade</th><th class="text-center">Status</th></tr></thead>
+        <tbody>{% for l in b.lines %}
+          <tr><td>{{ l.m.subject }}</td><td class="text-center">{{ b.exam.max_marks }}</td>
+            <td class="text-center fw-semibold">{% if l.m.absent %}AB{% else %}{{ l.m.marks|floatformat:"-1" }}{% endif %}</td>
+            <td class="text-center">{{ l.pct|default:"—" }}</td><td class="text-center">{{ l.grade }}</td>
+            <td class="text-center"><span class="badge {% if l.pass %}text-bg-success{% else %}text-bg-danger{% endif %}">{{ l.pass|yesno:"Pass,Fail" }}</span></td></tr>
+        {% endfor %}</tbody>
+        <tfoot><tr class="fw-semibold"><td>Total</td><td class="text-center">{{ b.maximum }}</td><td class="text-center">{{ b.total|floatformat:"-1" }}</td><td class="text-center">{{ b.pct|default:"—" }}</td><td class="text-center">{{ b.grade }}</td><td class="text-center">{{ b.result }}</td></tr></tfoot>
+      </table></div>
     </div>
+    {% endfor %}
   </div>
-  <div class="row g-2 mb-2">
-    <div class="col-6 col-md"><div class="mini-stat"><div class="v">{{ b.total|floatformat:"-1" }} / {{ b.maximum }}</div><div class="l">Total</div></div></div>
-    <div class="col-6 col-md"><div class="mini-stat"><div class="v">{{ b.pct|default:"—" }}%</div><div class="l">Percentage</div></div></div>
-    <div class="col-6 col-md"><div class="mini-stat"><div class="v">{{ b.grade }}</div><div class="l">Grade</div></div></div>
-    <div class="col-6 col-md"><div class="mini-stat"><div class="v">{{ b.rank|default:"—" }}</div><div class="l">Class rank</div></div></div>
-    <div class="col-12 col-md"><div class="mini-stat"><div class="v {% if b.result == 'PASS' %}text-success{% else %}text-danger{% endif %}">{{ b.result }}</div><div class="l">Result</div></div></div>
-  </div>
-  <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
-    <thead><tr><th>Subject</th><th class="text-center">Max</th><th class="text-center">Marks</th><th class="text-center">%</th><th class="text-center">Grade</th><th class="text-center">Status</th></tr></thead>
-    <tbody>{% for l in b.lines %}
-      <tr><td>{{ l.m.subject }}</td><td class="text-center">{{ b.exam.max_marks }}</td>
-        <td class="text-center fw-semibold">{% if l.m.absent %}AB{% else %}{{ l.m.marks|floatformat:"-1" }}{% endif %}</td>
-        <td class="text-center">{{ l.pct|default:"—" }}</td><td class="text-center">{{ l.grade }}</td>
-        <td class="text-center"><span class="badge {% if l.pass %}text-bg-success{% else %}text-bg-danger{% endif %}">{{ l.pass|yesno:"Pass,Fail" }}</span></td></tr>
-    {% endfor %}</tbody>
-  </table></div>
-</div>
-{% empty %}
-<div class="text-center text-muted py-4">No results yet.</div>
 {% endfor %}
+</div>
 <p class="small text-muted mb-0">Grades: A1 91–100 · A2 81–90 · B1 71–80 · B2 61–70 · C1 51–60 · C2 41–50 · D 35–40 · E below 35</p>
+{% else %}
+<div class="text-center text-muted py-5">No results yet.</div>
+{% endif %}

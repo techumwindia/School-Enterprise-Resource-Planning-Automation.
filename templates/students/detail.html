@@ -11,30 +11,20 @@
 
 <div class="row g-3">
   <div class="col-lg-4">
-    {% if user_role == 'admin' %}
     <div class="card mb-3">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-key"></i> Login (student &amp; parent)</span>
-        <button class="btn btn-sm btn-light" data-popup="{% url 'students:login_edit' s.pk %}" data-size="small" data-title="Edit login — {{ s.full_name }}"><i class="bi bi-pencil"></i> Edit</button>
+        <span>Profile</span>
+        {% if user_role == 'admin' %}<button class="btn btn-sm btn-light" data-popup="{% url 'students:login_edit' s.pk %}" data-size="small" data-title="Edit login — {{ s.full_name }}"><i class="bi bi-key"></i> Edit login</button>{% endif %}
       </div>
-      <div class="card-body small">
-        <div class="text-muted mb-2">One login for the student and the parent</div>
-        {% if login %}
-          <div class="d-flex justify-content-between"><span>Username</span><strong class="font-monospace">{{ login.username }}</strong></div>
-          <div class="d-flex justify-content-between"><span>Password</span>
-            {% if login.profile.issued_password %}<strong class="font-monospace">{{ login.profile.issued_password }}</strong>
-            {% else %}<span class="text-muted fst-italic">changed by user — click Edit to set a new one</span>{% endif %}</div>
-          {% if not login.is_active %}<div class="text-danger">Login disabled</div>{% endif %}
-        {% else %}
-          <span class="text-muted fst-italic">No login yet — click Edit to create one.</span>
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
-
-    <div class="card mb-3">
-      <div class="card-header">Profile</div>
       <ul class="list-group list-group-flush small">
+        {% if user_role == 'admin' %}
+        <li class="list-group-item d-flex justify-content-between bg-light"><span class="text-muted">Username <span class="small">(student &amp; parent)</span></span>
+          {% if login %}<strong class="font-monospace">{{ login.username }}</strong>{% else %}<span class="text-muted fst-italic">no login yet</span>{% endif %}</li>
+        <li class="list-group-item d-flex justify-content-between bg-light"><span class="text-muted">Password</span>
+          {% if login and login.profile.issued_password %}<strong class="font-monospace">{{ login.profile.issued_password }}</strong>
+          {% elif login %}<span class="text-muted fst-italic">changed by user</span>{% else %}<span class="text-muted">—</span>{% endif %}</li>
+        {% if login and not login.is_active %}<li class="list-group-item text-danger bg-light">Login disabled</li>{% endif %}
+        {% endif %}
         <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Gender</span>{{ s.get_gender_display }}</li>
         <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Date of birth</span>{{ s.date_of_birth|date:"d M Y" }}</li>
         <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Blood group</span>{{ s.blood_group|default:"—" }}</li>
@@ -50,11 +40,20 @@
 
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span>Attendance — {% if attendance_pct is not None %}{{ attendance_pct }}%{% else %}no records{% endif %}</span>
+        <span>Attendance <span class="text-muted fw-normal small">· last 30 days</span></span>
         <button class="btn btn-sm btn-outline-primary" data-popup="{% url 'students:attendance_detail' s.pk %}" data-title="Attendance — {{ s.full_name }}"><i class="bi bi-eye"></i> View</button>
       </div>
       <div class="card-body small">
-        {% for a in recent_attendance %}<span class="badge {% if a.status == 'P' %}text-bg-success{% elif a.status == 'A' %}text-bg-danger{% else %}text-bg-warning{% endif %} me-1 mb-1" title="{{ a.get_status_display }}">{{ a.date|date:"d M" }}</span>{% empty %}<span class="text-muted">Not marked yet.</span>{% endfor %}
+        {% if recent_attendance %}
+        <div class="d-flex flex-wrap gap-3 mb-2">
+          <span><strong class="fs-5">{{ attendance_pct }}%</strong></span>
+          <span class="text-success">Present {{ last30_counts.P }}</span>
+          <span class="text-danger">Absent {{ last30_counts.A }}</span>
+          {% if last30_counts.L %}<span style="color:#9a5d07">Leave {{ last30_counts.L }}</span>{% endif %}
+          {% if last30_counts.H %}<span style="color:#2a4fa8">Half day {{ last30_counts.H }}</span>{% endif %}
+        </div>
+        {% for a in recent_attendance %}<span class="badge {% if a.status == 'P' %}text-bg-success{% elif a.status == 'A' %}text-bg-danger{% elif a.status == 'H' %}text-bg-primary{% else %}text-bg-warning{% endif %} me-1 mb-1" title="{{ a.get_status_display }}">{{ a.date|date:"d M" }}</span>{% endfor %}
+        {% else %}<span class="text-muted">No attendance in the last 30 days.</span>{% endif %}
       </div>
     </div>
   </div>
@@ -80,12 +79,29 @@
     </div>
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span>Exam results</span>
-        <button class="btn btn-sm btn-outline-primary" data-popup="{% url 'students:results_detail' s.pk %}" data-title="Exam results — {{ s.full_name }}" {% if not exams %}disabled{% endif %}><i class="bi bi-eye"></i> View</button>
+        <span>Exam results {% if latest %}<span class="text-muted fw-normal small">· latest: {{ latest.exam }}</span>{% endif %}</span>
+        <button class="btn btn-sm btn-outline-primary" data-popup="{% url 'students:results_detail' s.pk %}" data-title="Exam results — {{ s.full_name }}" {% if not exam_count %}disabled{% endif %}><i class="bi bi-eye"></i> View{% if exam_count > 1 %} all ({{ exam_count }}){% endif %}</button>
       </div>
-      <div class="card-body">
-        {% for e in exams %}<span class="badge text-bg-light border me-1 mb-1 fw-normal fs-6"><i class="bi bi-file-earmark-text"></i> {{ e }}</span>{% empty %}<span class="text-muted small">No results yet.</span>{% endfor %}
+      {% if latest %}
+      <div class="card-body pb-0">
+        <div class="row g-2">
+          <div class="col-6 col-md"><div class="mini-stat"><div class="v">{{ latest.total|floatformat:"-1" }} / {{ latest.maximum }}</div><div class="l">Total</div></div></div>
+          <div class="col-6 col-md"><div class="mini-stat"><div class="v">{{ latest.pct|default:"—" }}%</div><div class="l">Percentage</div></div></div>
+          <div class="col-4 col-md"><div class="mini-stat"><div class="v">{{ latest.grade }}</div><div class="l">Grade</div></div></div>
+          <div class="col-4 col-md"><div class="mini-stat"><div class="v">{{ latest.rank|default:"—" }}</div><div class="l">Rank</div></div></div>
+          <div class="col-4 col-md"><div class="mini-stat"><div class="v {% if latest.result == 'PASS' %}text-success{% else %}text-danger{% endif %}">{{ latest.result }}</div><div class="l">Result</div></div></div>
+        </div>
       </div>
+      <div class="table-responsive"><table class="table table-sm mb-0 mt-2">
+        <thead><tr><th>Subject</th><th class="text-center">Marks</th><th class="text-center">Grade</th><th class="text-center">Status</th></tr></thead>
+        <tbody>{% for l in latest.lines %}
+          <tr><td>{{ l.m.subject }}</td><td class="text-center fw-semibold">{% if l.m.absent %}AB{% else %}{{ l.m.marks|floatformat:"-1" }}{% endif %} <span class="text-muted fw-normal">/ {{ latest.exam.max_marks }}</span></td>
+            <td class="text-center">{{ l.grade }}</td><td class="text-center"><span class="badge {% if l.pass %}text-bg-success{% else %}text-bg-danger{% endif %}">{{ l.pass|yesno:"Pass,Fail" }}</span></td></tr>
+        {% endfor %}</tbody>
+      </table></div>
+      {% else %}
+      <div class="card-body"><span class="text-muted small">No results yet.</span></div>
+      {% endif %}
     </div>
   </div>
 </div>

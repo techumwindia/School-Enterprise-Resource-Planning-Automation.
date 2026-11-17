@@ -196,7 +196,7 @@ class SmokeTest(TestCase):
         url = reverse("students:detail", args=[s.pk])
         self.login("admin")
         page = self.client.get(url).content.decode()
-        for text in ("Login (student &amp; parent)", "student1", "student123"):
+        for text in ("Edit login", "student1", "student123"):
             self.assertIn(text, page)
         self.assertNotIn("Parent login", page)
         for user in ("teacher1", "student1"):
@@ -315,9 +315,10 @@ class SmokeTest(TestCase):
         for user in ("admin", "teacher1", "accountant", "student1"):
             self.login(user)
             page = self.client.get(reverse("students:detail", args=[s.pk])).content.decode()
-            self.assertEqual(page.count('<div class="card-header">Profile</div>'), 1, user)
+            self.assertEqual(page.count('<span>Profile</span>'), 1, user)
             self.assertIn(s.father_name, page, user)
-            self.assertEqual(page.count("Login (student &amp; parent)"), 1 if user == "admin" else 0, user)
+            self.assertEqual("bi-key\"></i> Edit login</button>" in page, user == "admin", user)
+            self.assertEqual("student123" in page, user == "admin", user)
 
     def test_profile_has_no_main_edit_button_and_view_buttons(self):
         s = Student.objects.get(user__username="student1")
@@ -345,15 +346,46 @@ class SmokeTest(TestCase):
         self.assertTrue({row["status"] for row in r.context["ledger"]["rows"]} <= {"Paid", "Overdue", "Partly paid", "Not yet due", "Due"})
         # attendance popup: months and counts match the records
         r = self.client.get(urls["attendance_detail"])
-        self.assertEqual(r.context["total"], s.attendance.count())
-        self.assertEqual(sum(m["total"] for m in r.context["months"]), s.attendance.count())
+        self.assertEqual(sum(b["total"] for b in r.context["blocks"]), s.attendance.count())
+        self.assertEqual(sum(m["total"] for b in r.context["blocks"] for m in b["months"]), s.attendance.count())
         # results: staff see unpublished exams too, students only published
         Mark.objects.create(exam=Exam.objects.get(name="Half-yearly"), student=s,
                             subject=s.classroom.subjects.first(), marks=70)
-        self.assertEqual(len(self.client.get(urls["results_detail"]).context["blocks"]), 2)
+        years = self.client.get(urls["results_detail"]).context["years"]
+        self.assertEqual(sum(len(y["blocks"]) for y in years), 2)
         self.login("student1")
-        blocks = self.client.get(urls["results_detail"]).context["blocks"]
-        self.assertEqual([b["exam"].name for b in blocks], ["Quarterly"])
+        years = self.client.get(urls["results_detail"]).context["years"]
+        self.assertEqual([b["exam"].name for y in years for b in y["blocks"]], ["Quarterly"])
         # another student's popups are blocked
         for n in ("fees_detail", "attendance_detail", "results_detail"):
             self.assertEqual(self.client.get(reverse(f"students:{n}", args=[other.pk])).status_code, 403)
+
+    def test_last_30_days_and_academic_year_grouping(self):
+        from academics.models import AcademicYear
+        s = Student.objects.get(user__username="student1")
+        cur = AcademicYear.current()
+        prev = AcademicYear.objects.create(name="2025-26", start_date=cur.start_date.replace(year=cur.start_date.year - 1),
+                                           end_date=cur.end_date.replace(year=cur.end_date.year - 1))
+        # attendance last year and 40 days ago (outside the 30-day card)
+        Attendance.objects.create(student=s, date=prev.start_date + timedelta(days=10), status="A")
+        old = timezone.localdate() - timedelta(days=40)
+        Attendance.objects.get_or_create(student=s, date=old, defaults={"status": "P"})
+        # an exam last year with marks
+        old_exam = Exam.objects.create(name="Annual", academic_year=prev, is_published=True)
+        Mark.objects.create(exam=old_exam, student=s, subject=s.classroom.subjects.first(), marks=55)
+
+        self.login("admin")
+        r = self.client.get(reverse("students:detail", args=[s.pk]))
+        since = timezone.localdate() - timedelta(days=29)
+        self.assertTrue(all(a.date >= since for a in r.context["recent_attendance"]))
+        self.assertEqual(r.context["recent_attendance"].count(), s.attendance.filter(date__gte=since).count())
+        self.assertEqual(r.context["latest"]["exam"].name, "Quarterly")            # newest exam on the card
+        self.assertEqual(r.context["exam_count"], 2)
+
+        att = self.client.get(reverse("students:attendance_detail", args=[s.pk])).context["blocks"]
+        self.assertEqual([b["label"] for b in att], [cur.name, "2025-26"])      # current year first
+        self.assertEqual(att[1]["total"], 1)
+        self.assertEqual(att[1]["counts"]["A"], 1)
+        res = self.client.get(reverse("students:results_detail", args=[s.pk])).context["years"]
+        self.assertEqual([y["label"] for y in res], [cur.name, "2025-26"])
+        self.assertEqual([b["exam"].name for b in res[1]["blocks"]], ["Annual"])

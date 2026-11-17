@@ -1,6 +1,6 @@
 import calendar
 import csv
-from datetime import date
+from datetime import date, timedelta
 
 from django import forms
 from django.contrib.auth.models import User
@@ -13,7 +13,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.urls import reverse
 
-from academics.models import ClassRoom
+from academics.models import AcademicYear, ClassRoom
 from accounts.crud import make_crud, style_form
 from accounts.models import Role, user_role
 from accounts.permissions import STAFF_ROLES, role_required
@@ -136,23 +136,53 @@ def _student_for(request, pk):
 
 
 def _exams_for(request, student):
-    exams = Exam.objects.filter(marks__student=student).distinct().select_related("academic_year")
+    """Exams this student has marks in, newest first (students/parents: published only)."""
+    exams = (Exam.objects.filter(marks__student=student).distinct().select_related("academic_year")
+             .order_by("-academic_year__start_date", "-start_date", "-id"))
     if user_role(request.user) not in STAFF_ROLES:
         exams = exams.filter(is_published=True)
     return exams
 
 
+def exam_block(exam, student):
+    """Marks, total, %, grade, rank and result of one student in one exam."""
+    from exams.views import class_results  # local import: exams.views imports this module
+    marks = Mark.objects.filter(exam=exam, student=student).select_related("subject").order_by("subject__name")
+    total = sum((m.marks or 0) for m in marks)
+    maximum = exam.max_marks * len(marks)
+    pct = round(float(total) * 100 / maximum, 1) if maximum else None
+    failed = any(m.absent or (m.marks is not None and m.marks < exam.pass_marks) for m in marks)
+    rank = None
+    if student.classroom and not failed:
+        _subs, rows = class_results(exam, student.classroom)
+        rank = next((r.get("rank") for r in rows if r["s"].pk == student.pk), None)
+    lines = [{"m": m, "pct": round(float(m.marks) * 100 / exam.max_marks, 1) if m.marks is not None else None,
+              "grade": grade_for(float(m.marks) * 100 / exam.max_marks if m.marks is not None else None),
+              "pass": not m.absent and m.marks is not None and m.marks >= exam.pass_marks} for m in marks]
+    return {"exam": exam, "lines": lines, "total": total, "maximum": maximum, "pct": pct,
+            "grade": grade_for(pct), "result": "FAIL" if failed else "PASS", "rank": rank}
+
+
+def year_of(day, years):
+    """The AcademicYear a date falls in (years: list of AcademicYear), or None."""
+    return next((y for y in years if y.start_date <= day <= y.end_date), None)
+
+
 @login_required
 def student_detail(request, pk):
     student = _student_for(request, pk)
-    att = student.attendance.all()
+    since = timezone.localdate() - timedelta(days=29)
+    last30 = student.attendance.filter(date__gte=since)
+    exams = _exams_for(request, student)
     return render(request, "students/detail.html", {
         "s": student,
         "login": student.user,
-        "attendance_pct": attendance_percent(att),
-        "recent_attendance": att[:30],
+        "attendance_pct": attendance_percent(last30),
+        "recent_attendance": last30.order_by("-date"),
+        "last30_counts": {code: last30.filter(status=code).count() for code, _ in Attendance.STATUS},
         "ledger": fee_ledger(student),
-        "exams": _exams_for(request, student),
+        "exam_count": exams.count(),
+        "latest": exam_block(exams[0], student) if exams else None,
     })
 
 
@@ -180,57 +210,63 @@ def fees_detail(request, pk):
     })
 
 
+def _month_block(y, m, records):
+    cal = calendar.Calendar(firstweekday=0).monthdatescalendar(y, m)
+    weeks = [[{"date": d, "in_month": d.month == m, "rec": records.get(d)} for d in wk] for wk in cal]
+    mine = [r for d, r in records.items() if d.year == y and d.month == m]
+    counts = {code: sum(1 for r in mine if r.status == code) for code, _ in Attendance.STATUS}
+    total = len(mine)
+    pct = round((counts["P"] + counts["H"] * 0.5) * 100 / total, 1) if total else None
+    return {"label": date(y, m, 1).strftime("%B %Y"), "weeks": weeks, "counts": counts, "total": total, "pct": pct}
+
+
 @login_required
 def attendance_detail(request, pk):
-    """Popup: month-wise summary and a calendar of every marked day."""
+    """Popup: attendance grouped by academic year — totals and a month-by-month calendar."""
     student = _student_for(request, pk)
-    records = {a.date: a for a in student.attendance.order_by("date")}
-    months = []
-    if records:
-        first, last = min(records), max(records)
+    years = list(AcademicYear.objects.order_by("-start_date"))
+    groups = {}  # year (or None) -> {date: record}
+    for a in student.attendance.order_by("date"):
+        groups.setdefault(year_of(a.date, years), {})[a.date] = a
+
+    blocks = []
+    for year in sorted(groups, key=lambda y: (y is not None, y.start_date if y else date.min), reverse=True):
+        recs = groups[year]
+        first, last = min(recs), max(recs)
+        months = []
         y, m = first.year, first.month
         while (y, m) <= (last.year, last.month):
-            cal = calendar.Calendar(firstweekday=0).monthdatescalendar(y, m)
-            weeks = [[{"date": d, "in_month": d.month == m, "rec": records.get(d)} for d in wk] for wk in cal]
-            mine = [r for d, r in records.items() if d.year == y and d.month == m]
-            counts = {code: sum(1 for r in mine if r.status == code) for code, _ in Attendance.STATUS}
-            total = len(mine)
-            pct = round((counts["P"] + counts["H"] * 0.5) * 100 / total, 1) if total else None
-            months.append({"label": date(y, m, 1).strftime("%B %Y"), "weeks": weeks, "counts": counts,
-                           "total": total, "pct": pct})
+            months.append(_month_block(y, m, recs))
             y, m = (y + 1, 1) if m == 12 else (y, m + 1)
         months.reverse()  # latest month first
-    all_recs = student.attendance.all()
-    overall = {code: all_recs.filter(status=code).count() for code, _ in Attendance.STATUS}
+        counts = {code: sum(1 for r in recs.values() if r.status == code) for code, _ in Attendance.STATUS}
+        total = len(recs)
+        blocks.append({
+            "key": f"y{year.pk}" if year else "other",
+            "label": year.name if year else "Other dates",
+            "current": bool(year and year.is_current),
+            "months": months, "counts": counts, "total": total,
+            "pct": round((counts["P"] + counts["H"] * 0.5) * 100 / total, 1) if total else None,
+        })
     return render(request, "students/popup_attendance.html", {
-        "s": student, "months": months, "overall": overall, "total": all_recs.count(),
-        "pct": attendance_percent(all_recs), "statuses": Attendance.STATUS,
-        "weekdays": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+        "s": student, "blocks": blocks, "weekdays": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     })
 
 
 @login_required
 def results_detail(request, pk):
-    """Popup: subject-wise marks, total, %, grade, rank and result for each exam."""
-    from exams.views import class_results  # local import: exams.views imports this module
+    """Popup: every exam result grouped by academic year."""
     student = _student_for(request, pk)
-    blocks = []
+    by_year = {}
     for exam in _exams_for(request, student):
-        marks = Mark.objects.filter(exam=exam, student=student).select_related("subject").order_by("subject__name")
-        total = sum((m.marks or 0) for m in marks)
-        maximum = exam.max_marks * len(marks)
-        pct = round(float(total) * 100 / maximum, 1) if maximum else None
-        failed = any(m.absent or (m.marks is not None and m.marks < exam.pass_marks) for m in marks)
-        rank = None
-        if student.classroom and not failed:
-            _subs, rows = class_results(exam, student.classroom)
-            rank = next((r.get("rank") for r in rows if r["s"].pk == student.pk), None)
-        lines = [{"m": m, "pct": round(float(m.marks) * 100 / exam.max_marks, 1) if m.marks is not None else None,
-                  "grade": grade_for(float(m.marks) * 100 / exam.max_marks if m.marks is not None else None),
-                  "pass": not m.absent and m.marks is not None and m.marks >= exam.pass_marks} for m in marks]
-        blocks.append({"exam": exam, "lines": lines, "total": total, "maximum": maximum, "pct": pct,
-                       "grade": grade_for(pct), "result": "FAIL" if failed else "PASS", "rank": rank})
-    return render(request, "students/popup_results.html", {"s": student, "blocks": blocks})
+        by_year.setdefault(exam.academic_year, []).append(exam_block(exam, student))
+    for blocks in by_year.values():  # within a year: in the order the exams were held
+        blocks.reverse()
+    years = [{"key": f"r{y.pk}", "label": y.name, "current": y.is_current, "blocks": blocks,
+              "avg": round(sum(b["pct"] for b in blocks if b["pct"] is not None) /
+                           max(1, sum(1 for b in blocks if b["pct"] is not None)), 1)}
+             for y, blocks in by_year.items()]  # already newest year first
+    return render(request, "students/popup_results.html", {"s": student, "years": years})
 
 
 @role_required(Role.ADMIN)
