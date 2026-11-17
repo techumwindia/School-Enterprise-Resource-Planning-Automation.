@@ -1,0 +1,36 @@
+<div class="row g-2 mb-3">
+  <div class="col-6 col-md"><div class="mini-stat"><div class="v">{% if pct is not None %}{{ pct }}%{% else %}—{% endif %}</div><div class="l">Overall attendance</div></div></div>
+  <div class="col-6 col-md"><div class="mini-stat"><div class="v">{{ total }}</div><div class="l">Days marked</div></div></div>
+  <div class="col-6 col-md"><div class="mini-stat"><div class="v text-success">{{ overall.P }}</div><div class="l">Present</div></div></div>
+  <div class="col-6 col-md"><div class="mini-stat"><div class="v text-danger">{{ overall.A }}</div><div class="l">Absent</div></div></div>
+  <div class="col-6 col-md"><div class="mini-stat"><div class="v" style="color:#9a5d07">{{ overall.L }}</div><div class="l">Leave</div></div></div>
+  <div class="col-6 col-md"><div class="mini-stat"><div class="v" style="color:#2a4fa8">{{ overall.H }}</div><div class="l">Half day</div></div></div>
+</div>
+{% if pct is not None and pct < 75 %}<div class="alert alert-warning py-2 small">Attendance is below 75%.</div>{% endif %}
+
+<div class="small mb-3">
+  <span class="me-3"><span class="legend-dot" style="background:#d9f2e3"></span>Present</span>
+  <span class="me-3"><span class="legend-dot" style="background:#fbd9d9"></span>Absent</span>
+  <span class="me-3"><span class="legend-dot" style="background:#fdecc8"></span>Leave</span>
+  <span class="me-3"><span class="legend-dot" style="background:#dce6fb"></span>Half day</span>
+  <span><span class="legend-dot" style="background:#f6f7f9"></span>Not marked</span>
+</div>
+
+<div class="row g-4">
+{% for m in months %}
+  <div class="col-md-6 col-xl-4">
+    <div class="d-flex justify-content-between align-items-baseline mb-1">
+      <strong>{{ m.label }}</strong>
+      <span class="small text-muted">{% if m.pct is not None %}{{ m.pct }}% · {% endif %}P {{ m.counts.P }} · A {{ m.counts.A }}{% if m.counts.L %} · L {{ m.counts.L }}{% endif %}{% if m.counts.H %} · H {{ m.counts.H }}{% endif %}</span>
+    </div>
+    <table class="att-cal">
+      <thead><tr>{% for w in weekdays %}<th>{{ w }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for wk in m.weeks %}<tr>
+        {% for d in wk %}<td class="{% if not d.in_month %}out{% elif d.rec %}{{ d.rec.status }}{% elif d.date.weekday == 6 %}sun{% endif %}" title="{% if d.rec %}{{ d.date|date:'d M' }} — {{ d.rec.get_status_display }}{% endif %}">{% if d.in_month %}{{ d.date.day }}{% endif %}</td>{% endfor %}
+      </tr>{% endfor %}</tbody>
+    </table>
+  </div>
+{% empty %}
+  <div class="col-12 text-center text-muted py-4">Attendance has not been marked for this student yet.</div>
+{% endfor %}
+</div>

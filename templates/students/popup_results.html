@@ -1,0 +1,30 @@
+{% for b in blocks %}
+<div class="mb-4">
+  <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-2">
+    <h3 class="h6 fw-bold mb-0">{{ b.exam }} {% if not b.exam.is_published %}<span class="badge text-bg-secondary fw-normal">Not published</span>{% endif %}</h3>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-light" href="{% url 'exams:report_card' b.exam.pk s.pk %}" target="_blank"><i class="bi bi-eye"></i> Report card</a>
+      <button class="btn btn-sm btn-primary" data-pdf="{% url 'exams:report_card' b.exam.pk s.pk %}" data-filename="Report-card-{{ s.admission_no }}-{{ b.exam.name }}.pdf"><i class="bi bi-download"></i> PDF</button>
+    </div>
+  </div>
+  <div class="row g-2 mb-2">
+    <div class="col-6 col-md"><div class="mini-stat"><div class="v">{{ b.total|floatformat:"-1" }} / {{ b.maximum }}</div><div class="l">Total</div></div></div>
+    <div class="col-6 col-md"><div class="mini-stat"><div class="v">{{ b.pct|default:"—" }}%</div><div class="l">Percentage</div></div></div>
+    <div class="col-6 col-md"><div class="mini-stat"><div class="v">{{ b.grade }}</div><div class="l">Grade</div></div></div>
+    <div class="col-6 col-md"><div class="mini-stat"><div class="v">{{ b.rank|default:"—" }}</div><div class="l">Class rank</div></div></div>
+    <div class="col-12 col-md"><div class="mini-stat"><div class="v {% if b.result == 'PASS' %}text-success{% else %}text-danger{% endif %}">{{ b.result }}</div><div class="l">Result</div></div></div>
+  </div>
+  <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
+    <thead><tr><th>Subject</th><th class="text-center">Max</th><th class="text-center">Marks</th><th class="text-center">%</th><th class="text-center">Grade</th><th class="text-center">Status</th></tr></thead>
+    <tbody>{% for l in b.lines %}
+      <tr><td>{{ l.m.subject }}</td><td class="text-center">{{ b.exam.max_marks }}</td>
+        <td class="text-center fw-semibold">{% if l.m.absent %}AB{% else %}{{ l.m.marks|floatformat:"-1" }}{% endif %}</td>
+        <td class="text-center">{{ l.pct|default:"—" }}</td><td class="text-center">{{ l.grade }}</td>
+        <td class="text-center"><span class="badge {% if l.pass %}text-bg-success{% else %}text-bg-danger{% endif %}">{{ l.pass|yesno:"Pass,Fail" }}</span></td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</div>
+{% empty %}
+<div class="text-center text-muted py-4">No results yet.</div>
+{% endfor %}
+<p class="small text-muted mb-0">Grades: A1 91–100 · A2 81–90 · B1 71–80 · B2 61–70 · C1 51–60 · C2 41–50 · D 35–40 · E below 35</p>

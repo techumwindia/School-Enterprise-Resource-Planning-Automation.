@@ -93,3 +93,26 @@ body { background: var(--erp-bg); color: var(--erp-ink); font-family: "Segoe UI"
   body { background: #fff; }
   .doc { box-shadow: none; padding: 0; }
 }
+
+/* Popup windows: detail views take 80% of the screen */
+.modal-dialog.popup-large { max-width: 80vw; width: 80vw; }
+.modal-dialog.popup-large .modal-content { height: 80vh; }
+@media (max-width: 767.98px) {
+  .modal-dialog.popup-large { max-width: 96vw; width: 96vw; margin: 2vh auto; }
+  .modal-dialog.popup-large .modal-content { height: 92vh; }
+}
+.mini-stat { border-radius: 10px; padding: .6rem .9rem; background: var(--erp-bg); }
+.mini-stat .v { font-size: 1.25rem; font-weight: 700; line-height: 1.1; }
+.mini-stat .l { font-size: .75rem; color: var(--erp-muted); }
+
+/* Attendance calendar in popup */
+.att-cal { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 3px; }
+.att-cal th { font-size: .7rem; color: var(--erp-muted); text-align: center; font-weight: 600; }
+.att-cal td { height: 34px; text-align: center; border-radius: 6px; font-size: .8rem; background: #f6f7f9; }
+.att-cal td.out { background: transparent; color: transparent; }
+.att-cal td.P { background: #d9f2e3; color: #1f6b43; font-weight: 600; }
+.att-cal td.A { background: #fbd9d9; color: #a52e2e; font-weight: 700; }
+.att-cal td.L { background: #fdecc8; color: #9a5d07; font-weight: 600; }
+.att-cal td.H { background: #dce6fb; color: #2a4fa8; font-weight: 600; }
+.att-cal td.sun { color: #c2c6cf; }
+.legend-dot { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 4px; }

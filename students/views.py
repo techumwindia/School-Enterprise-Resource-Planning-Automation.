@@ -1,4 +1,6 @@
+import calendar
 import csv
+from datetime import date
 
 from django import forms
 from django.contrib.auth.models import User
@@ -8,89 +10,80 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.urls import reverse
 
 from academics.models import ClassRoom
-from accounts.crud import make_crud
+from accounts.crud import make_crud, style_form
 from accounts.models import Role, user_role
 from accounts.permissions import STAFF_ROLES, role_required
-from attendance.models import attendance_percent
-from exams.models import Exam
+from attendance.models import Attendance, attendance_percent
+from exams.models import Exam, Mark, grade_for
 from fees.models import fee_ledger
 
-from .logins import ensure_logins, generate_password
+from .logins import ensure_logins, generate_password, student_username
 from .models import Student
 
 
 class StudentForm(forms.ModelForm):
-    """Student details plus one login shared by the student and the parent."""
-    login_username = forms.CharField(label="Username", required=False, max_length=150,
-                                     validators=[UnicodeUsernameValidator()],
-                                     help_text="Used by both the student and the parent.")
-    login_password = forms.CharField(label="Password", required=False, max_length=128,
-                                     help_text="Type a new password to set or change it.")
+    """Student details. The login is created automatically on admission and managed from the profile."""
 
     class Meta:
         model = Student
         exclude = ["user", "parent_user"]
         widgets = {"address": forms.Textarea(attrs={"rows": 2})}
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["login_username"].section = "Login (student & parent)"
-        s = self.instance
-        if not s.pk:  # new admission: blank fields are generated automatically
-            self.fields["login_username"].help_text = "Leave blank to use the admission number."
-            self.fields["login_password"].help_text = "Leave blank to generate a password."
-        elif s.user:
-            self.fields["login_username"].initial = s.user.username
-            self.fields["login_password"].initial = s.user.profile.issued_password
-        else:
-            self.fields["login_username"].help_text = "No login yet. Enter a username, or leave blank."
-
-    def clean(self):
-        data = super().clean()
-        username = data.get("login_username", "").strip()
-        password = data.get("login_password", "")
-        current = self.instance.user if self.instance.pk else None
-        if username and User.objects.filter(username__iexact=username).exclude(
-                pk=getattr(current, "pk", None)).exists():
-            self.add_error("login_username", "This username is already used by someone else.")
-        if password and len(password) < 4:
-            self.add_error("login_password", "Use at least 4 characters.")
-        return data
-
     def save(self, commit=True):
         is_new = not self.instance.pk
-        current = self.instance.user if self.instance.pk else None
-        student = super().save(commit=False)
-        username = self.cleaned_data.get("login_username", "").strip()
-        password = self.cleaned_data.get("login_password", "")
-
-        if username:
-            user = current or User(first_name=student.first_name[:150], last_name=student.last_name[:150])
-            user.username = username
-            if not user.pk:
-                password = password or generate_password()
-                user.set_password(password)
-            elif password and password != user.profile.issued_password:
-                user.set_password(password)
-            user.save()
-            profile = user.profile
-            profile.role = Role.STUDENT
-            if password:
-                profile.issued_password = password
-            profile.save()
-            student.user = user
-        elif not is_new:
-            student.user = None  # login removed from this student (the account itself is kept)
-
-        if commit:
-            student.save()
-            self.save_m2m()
-            if is_new and not student.user_id:
-                ensure_logins(student)  # username left blank on a new admission -> generate it
+        student = super().save(commit=commit)
+        if commit and is_new:
+            ensure_logins(student)  # username = admission no, random password
         return student
+
+
+class LoginForm(forms.Form):
+    """Username / password for the login shared by the student and the parent."""
+    username = forms.CharField(max_length=150, validators=[UnicodeUsernameValidator()],
+                               help_text="Used by both the student and the parent.")
+    password = forms.CharField(required=False, max_length=128,
+                               help_text="Leave as it is to keep the current password.")
+
+    def __init__(self, *args, student=None, **kwargs):
+        self.student = student
+        super().__init__(*args, **kwargs)
+
+    def clean_username(self):
+        username = self.cleaned_data["username"].strip()
+        if User.objects.filter(username__iexact=username).exclude(pk=self.student.user_id).exists():
+            raise forms.ValidationError("This username is already used by someone else.")
+        return username
+
+    def clean_password(self):
+        password = self.cleaned_data.get("password", "")
+        if password and len(password) < 4:
+            raise forms.ValidationError("Use at least 4 characters.")
+        return password
+
+    def save(self):
+        student = self.student
+        user = student.user or User(first_name=student.first_name[:150], last_name=student.last_name[:150])
+        password = self.cleaned_data["password"]
+        user.username = self.cleaned_data["username"]
+        if not user.pk:
+            password = password or generate_password()
+            user.set_password(password)
+        elif password and password != user.profile.issued_password:
+            user.set_password(password)
+        user.save()
+        profile = user.profile
+        profile.role = Role.STUDENT
+        if password:
+            profile.issued_password = password
+        profile.save()
+        if student.user_id != user.pk:
+            student.user = user
+            student.save(update_fields=["user"])
+        return user
 
 
 def _class_choices():
@@ -119,7 +112,7 @@ StudentViews[0].header_actions = (
 
 def _after_admission(self):
     messages.success(self.request, f"Admission saved for {self.object.full_name}. "
-                                   "The login for the student and parent is shown below.")
+                                   "The login for the student and parent is shown in the Login card.")
     return reverse("students:detail", args=[self.object.pk])
 
 
@@ -135,15 +128,23 @@ def can_view_student(user, student):
            (role == Role.PARENT and student.parent_user_id == user.id)
 
 
-@login_required
-def student_detail(request, pk):
+def _student_for(request, pk):
     student = get_object_or_404(Student.objects.select_related("classroom", "user__profile"), pk=pk)
     if not can_view_student(request.user, student):
         raise PermissionDenied
-    role = user_role(request.user)
-    exams = Exam.objects.filter(marks__student=student).distinct()
-    if role not in STAFF_ROLES:
+    return student
+
+
+def _exams_for(request, student):
+    exams = Exam.objects.filter(marks__student=student).distinct().select_related("academic_year")
+    if user_role(request.user) not in STAFF_ROLES:
         exams = exams.filter(is_published=True)
+    return exams
+
+
+@login_required
+def student_detail(request, pk):
+    student = _student_for(request, pk)
     att = student.attendance.all()
     return render(request, "students/detail.html", {
         "s": student,
@@ -151,9 +152,104 @@ def student_detail(request, pk):
         "attendance_pct": attendance_percent(att),
         "recent_attendance": att[:30],
         "ledger": fee_ledger(student),
-        "payments": student.payments.select_related("fee__fee_type")[:20],
-        "exams": exams,
+        "exams": _exams_for(request, student),
     })
+
+
+@login_required
+def fees_detail(request, pk):
+    """Popup: fee status for every fee item plus all payments with receipts."""
+    student = _student_for(request, pk)
+    ledger = fee_ledger(student)
+    today = timezone.localdate()
+    for r in ledger["rows"]:
+        if r["balance"] <= 0:
+            r["status"], r["badge"] = "Paid", "success"
+        elif r["overdue"]:
+            r["status"], r["badge"] = "Overdue", "danger"
+        elif r["paid"] > 0:
+            r["status"], r["badge"] = "Partly paid", "warning"
+        elif r["fee"].due_date and r["fee"].due_date >= today:
+            r["status"], r["badge"] = "Not yet due", "secondary"
+        else:
+            r["status"], r["badge"] = "Due", "warning"
+    payments = student.payments.select_related("fee__fee_type", "fee__academic_year", "collected_by")
+    return render(request, "students/popup_fees.html", {
+        "s": student, "ledger": ledger, "payments": payments,
+        "paid_total": sum(p.amount for p in payments), "concession_total": sum(p.concession for p in payments),
+    })
+
+
+@login_required
+def attendance_detail(request, pk):
+    """Popup: month-wise summary and a calendar of every marked day."""
+    student = _student_for(request, pk)
+    records = {a.date: a for a in student.attendance.order_by("date")}
+    months = []
+    if records:
+        first, last = min(records), max(records)
+        y, m = first.year, first.month
+        while (y, m) <= (last.year, last.month):
+            cal = calendar.Calendar(firstweekday=0).monthdatescalendar(y, m)
+            weeks = [[{"date": d, "in_month": d.month == m, "rec": records.get(d)} for d in wk] for wk in cal]
+            mine = [r for d, r in records.items() if d.year == y and d.month == m]
+            counts = {code: sum(1 for r in mine if r.status == code) for code, _ in Attendance.STATUS}
+            total = len(mine)
+            pct = round((counts["P"] + counts["H"] * 0.5) * 100 / total, 1) if total else None
+            months.append({"label": date(y, m, 1).strftime("%B %Y"), "weeks": weeks, "counts": counts,
+                           "total": total, "pct": pct})
+            y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+        months.reverse()  # latest month first
+    all_recs = student.attendance.all()
+    overall = {code: all_recs.filter(status=code).count() for code, _ in Attendance.STATUS}
+    return render(request, "students/popup_attendance.html", {
+        "s": student, "months": months, "overall": overall, "total": all_recs.count(),
+        "pct": attendance_percent(all_recs), "statuses": Attendance.STATUS,
+        "weekdays": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    })
+
+
+@login_required
+def results_detail(request, pk):
+    """Popup: subject-wise marks, total, %, grade, rank and result for each exam."""
+    from exams.views import class_results  # local import: exams.views imports this module
+    student = _student_for(request, pk)
+    blocks = []
+    for exam in _exams_for(request, student):
+        marks = Mark.objects.filter(exam=exam, student=student).select_related("subject").order_by("subject__name")
+        total = sum((m.marks or 0) for m in marks)
+        maximum = exam.max_marks * len(marks)
+        pct = round(float(total) * 100 / maximum, 1) if maximum else None
+        failed = any(m.absent or (m.marks is not None and m.marks < exam.pass_marks) for m in marks)
+        rank = None
+        if student.classroom and not failed:
+            _subs, rows = class_results(exam, student.classroom)
+            rank = next((r.get("rank") for r in rows if r["s"].pk == student.pk), None)
+        lines = [{"m": m, "pct": round(float(m.marks) * 100 / exam.max_marks, 1) if m.marks is not None else None,
+                  "grade": grade_for(float(m.marks) * 100 / exam.max_marks if m.marks is not None else None),
+                  "pass": not m.absent and m.marks is not None and m.marks >= exam.pass_marks} for m in marks]
+        blocks.append({"exam": exam, "lines": lines, "total": total, "maximum": maximum, "pct": pct,
+                       "grade": grade_for(pct), "result": "FAIL" if failed else "PASS", "rank": rank})
+    return render(request, "students/popup_results.html", {"s": student, "blocks": blocks})
+
+
+@role_required(Role.ADMIN)
+def login_edit(request, pk):
+    """Popup form (admin): change the username / password of the student's login."""
+    student = get_object_or_404(Student.objects.select_related("user__profile"), pk=pk)
+    initial = {"username": student.user.username, "password": student.user.profile.issued_password} \
+        if student.user else {"username": student_username(student), "password": generate_password()}
+    if request.method == "POST":
+        form = LoginForm(request.POST, student=student)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Login updated.")
+            return HttpResponse(status=204)  # popup closes and the profile reloads
+    else:
+        form = LoginForm(initial=initial, student=student)
+    style_form(form)
+    return render(request, "students/popup_login.html", {"s": student, "form": form,
+                                                          "suggested": generate_password()})
 
 
 @role_required(Role.ADMIN)

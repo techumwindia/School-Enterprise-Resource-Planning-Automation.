@@ -1,0 +1,24 @@
+<form method="post" action="{% url 'students:login_edit' s.pk %}" data-popup-form novalidate>
+  {% csrf_token %}
+  <p class="text-muted small">One login for {{ s.full_name }} and the parent. Give these details to the family.</p>
+  {{ form.non_field_errors }}
+  <div class="mb-3">
+    <label class="form-label" for="{{ form.username.id_for_label }}">Username</label>
+    {{ form.username }}
+    {% for e in form.username.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+    <div class="form-text">Default is the admission number in small letters ({{ s.admission_no|lower }}).</div>
+  </div>
+  <div class="mb-3">
+    <label class="form-label" for="{{ form.password.id_for_label }}">Password</label>
+    <div class="input-group">
+      {{ form.password }}
+      <button type="button" class="btn btn-outline-secondary" data-fill="#{{ form.password.id_for_label }}" data-value="{{ suggested }}"><i class="bi bi-shuffle"></i> New password</button>
+    </div>
+    {% for e in form.password.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+    <div class="form-text">{% if s.user and not s.user.profile.issued_password %}The user changed their password, so it isn't shown. Type a new one only if they forgot it.{% else %}Change it, or click “New password” for a random one.{% endif %}</div>
+  </div>
+  <div class="d-flex gap-2 justify-content-end">
+    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+    <button class="btn btn-primary"><i class="bi bi-check2"></i> Save login</button>
+  </div>
+</form>

@@ -203,36 +203,49 @@ class SmokeTest(TestCase):
             self.login(user)
             self.assertNotIn("student123", self.client.get(url).content.decode())
 
-    def test_edit_form_changes_login(self):
+    def test_login_edited_from_profile_popup(self):
         from django.contrib.auth import authenticate
         s = Student.objects.get(user__username="student1")
+        url = reverse("students:login_edit", args=[s.pk])
         self.login("admin")
-        edit = reverse("students:student_edit", args=[s.pk])
-        form = self.client.get(edit).context["form"]
-        self.assertNotIn("parent_username", form.fields)
-        self.assertEqual(form["login_username"].value(), "student1")
-        self.assertEqual(form["login_password"].value(), "student123")
-        r = self.client.post(edit, self.student_post_data(s))  # unchanged form keeps the password
-        self.assertEqual(r.status_code, 302, r.context and r.context["form"].errors)
-        self.assertIsNotNone(authenticate(username="student1", password="student123"))
-        r = self.client.post(edit, self.student_post_data(s, login_username="vignesh10a", login_password="newpass1"))
-        self.assertEqual(r.status_code, 302, r.context and r.context["form"].errors)
+        # the main student form no longer has login fields
+        self.assertNotIn("login_username", self.client.get(reverse("students:student_edit", args=[s.pk])).context["form"].fields)
+        form = self.client.get(url).context["form"]
+        self.assertEqual(form["username"].value(), "student1")
+        self.assertEqual(form["password"].value(), "student123")
+        r = self.client.post(url, {"username": "vignesh10a", "password": "newpass1"})
+        self.assertEqual(r.status_code, 204)
         self.assertIsNotNone(authenticate(username="vignesh10a", password="newpass1"))
         self.assertIsNone(authenticate(username="student1", password="student123"))
         s.refresh_from_db()
-        self.assertEqual(s.user.username, "vignesh10a")  # same account renamed, not a new one
+        self.assertEqual(s.user.username, "vignesh10a")
+        # editing the student's details keeps the login
+        r = self.client.post(reverse("students:student_edit", args=[s.pk]), self.student_post_data(s, roll_no="5"))
+        self.assertEqual(r.status_code, 302)
+        s.refresh_from_db()
+        self.assertEqual((s.roll_no, s.user.username), (5, "vignesh10a"))
+        # only admin
+        for user in ("teacher1", "accountant", "student1"):
+            self.client.logout()
+            if user == "student1":
+                self.client.login(username="vignesh10a", password="newpass1")
+            else:
+                self.login(user)
+            self.assertEqual(self.client.get(url).status_code, 403, user)
 
-    def test_login_form_validation(self):
+    def test_login_popup_validation_and_create(self):
         self.login("admin")
         s = Student.objects.filter(user__isnull=True).first()
-        edit = reverse("students:student_edit", args=[s.pk])
-        r = self.client.post(edit, self.student_post_data(s, login_username="teacher1", login_password="abcd"))
-        self.assertIn("login_username", r.context["form"].errors)
-        r = self.client.post(edit, self.student_post_data(s, login_username="abc", login_password="12"))
-        self.assertIn("login_password", r.context["form"].errors)
-        # editing an old student and typing only a username generates the password
-        r = self.client.post(edit, self.student_post_data(s, login_username="kid42"))
-        self.assertEqual(r.status_code, 302)
+        url = reverse("students:login_edit", args=[s.pk])
+        form = self.client.get(url).context["form"]
+        self.assertEqual(form["username"].value(), s.admission_no.lower())   # suggested
+        self.assertEqual(len(form["password"].value()), 8)
+        r = self.client.post(url, {"username": "teacher1", "password": "abcd"})
+        self.assertIn("username", r.context["form"].errors)
+        r = self.client.post(url, {"username": "kid42", "password": "12"})
+        self.assertIn("password", r.context["form"].errors)
+        r = self.client.post(url, {"username": "kid42", "password": ""})  # blank -> generated
+        self.assertEqual(r.status_code, 204)
         s.refresh_from_db()
         self.assertEqual(s.user.username, "kid42")
         self.assertEqual(len(s.user.profile.issued_password), 8)
@@ -276,11 +289,8 @@ class SmokeTest(TestCase):
         self.client.logout()
         self.client.login(username="a2001", password=pw)
         self.assertEqual(self.client.get(reverse("accounts:dashboard")).context["children"][0]["student"], st)
-        # typed values are kept
-        self.login("admin")
-        self.new_admission("A2003", login_username="ravi.k", login_password="ravi2026")
-        self.assertIsNotNone(authenticate(username="ravi.k", password="ravi2026"))
         # same admission no pattern taken -> unique suffix
+        self.login("admin")
         User.objects.create_user("a2004", password="x")
         self.new_admission("A2004")
         self.assertEqual(Student.objects.get(admission_no="A2004").user.username, "a2004-2")
@@ -308,3 +318,42 @@ class SmokeTest(TestCase):
             self.assertEqual(page.count('<div class="card-header">Profile</div>'), 1, user)
             self.assertIn(s.father_name, page, user)
             self.assertEqual(page.count("Login (student &amp; parent)"), 1 if user == "admin" else 0, user)
+
+    def test_profile_has_no_main_edit_button_and_view_buttons(self):
+        s = Student.objects.get(user__username="student1")
+        self.login("admin")
+        page = self.client.get(reverse("students:detail", args=[s.pk])).content.decode()
+        self.assertNotIn(reverse("students:student_edit", args=[s.pk]), page)
+        for name in ("fees_detail", "attendance_detail", "results_detail", "login_edit"):
+            self.assertIn(reverse(f"students:{name}", args=[s.pk]), page)
+
+    def test_view_popups(self):
+        s = Student.objects.get(user__username="student1")
+        other = Student.objects.exclude(pk=s.pk).first()
+        urls = {n: reverse(f"students:{n}", args=[s.pk]) for n in ("fees_detail", "attendance_detail", "results_detail")}
+        for user in ("admin", "teacher1", "accountant", "student1"):
+            self.login(user)
+            for name, url in urls.items():
+                self.assertEqual(self.client.get(url).status_code, 200, f"{user} {name}")
+        # fee popup content: statuses, receipts with view + pdf
+        self.login("admin")
+        r = self.client.get(urls["fees_detail"])
+        page = r.content.decode()
+        p = FeePayment.objects.filter(student=s).first()
+        self.assertIn(p.receipt_no, page)
+        self.assertIn(f'data-pdf="{reverse("fees:receipt", args=[p.pk])}"', page)
+        self.assertTrue({row["status"] for row in r.context["ledger"]["rows"]} <= {"Paid", "Overdue", "Partly paid", "Not yet due", "Due"})
+        # attendance popup: months and counts match the records
+        r = self.client.get(urls["attendance_detail"])
+        self.assertEqual(r.context["total"], s.attendance.count())
+        self.assertEqual(sum(m["total"] for m in r.context["months"]), s.attendance.count())
+        # results: staff see unpublished exams too, students only published
+        Mark.objects.create(exam=Exam.objects.get(name="Half-yearly"), student=s,
+                            subject=s.classroom.subjects.first(), marks=70)
+        self.assertEqual(len(self.client.get(urls["results_detail"]).context["blocks"]), 2)
+        self.login("student1")
+        blocks = self.client.get(urls["results_detail"]).context["blocks"]
+        self.assertEqual([b["exam"].name for b in blocks], ["Quarterly"])
+        # another student's popups are blocked
+        for n in ("fees_detail", "attendance_detail", "results_detail"):
+            self.assertEqual(self.client.get(reverse(f"students:{n}", args=[other.pk])).status_code, 403)

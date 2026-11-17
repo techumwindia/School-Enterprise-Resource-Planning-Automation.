@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load humanize static %}
 {% block title %}{{ s.full_name }}{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -7,7 +7,6 @@
     <h1 class="page-title">{{ s.full_name }}</h1>
     <div class="text-muted small">Adm. No {{ s.admission_no }} · Class {{ s.classroom|default:"—" }}{% if s.roll_no %} · Roll {{ s.roll_no }}{% endif %}{% if not s.is_active %} · <span class="text-danger">Left school</span>{% endif %}</div>
   </div>
-  {% if user_role == 'admin' %}<a class="btn btn-light" href="{% url 'students:student_edit' s.pk %}"><i class="bi bi-pencil"></i> Edit</a>{% endif %}
 </div>
 
 <div class="row g-3">
@@ -16,7 +15,7 @@
     <div class="card mb-3">
       <div class="card-header d-flex justify-content-between align-items-center">
         <span><i class="bi bi-key"></i> Login (student &amp; parent)</span>
-        <a class="btn btn-sm btn-light" href="{% url 'students:student_edit' s.pk %}"><i class="bi bi-pencil"></i> Change</a>
+        <button class="btn btn-sm btn-light" data-popup="{% url 'students:login_edit' s.pk %}" data-size="small" data-title="Edit login — {{ s.full_name }}"><i class="bi bi-pencil"></i> Edit</button>
       </div>
       <div class="card-body small">
         <div class="text-muted mb-2">One login for the student and the parent</div>
@@ -24,18 +23,15 @@
           <div class="d-flex justify-content-between"><span>Username</span><strong class="font-monospace">{{ login.username }}</strong></div>
           <div class="d-flex justify-content-between"><span>Password</span>
             {% if login.profile.issued_password %}<strong class="font-monospace">{{ login.profile.issued_password }}</strong>
-            {% else %}<span class="text-muted fst-italic">changed by user — set a new one in Edit</span>{% endif %}</div>
+            {% else %}<span class="text-muted fst-italic">changed by user — click Edit to set a new one</span>{% endif %}</div>
           {% if not login.is_active %}<div class="text-danger">Login disabled</div>{% endif %}
         {% else %}
-          <form method="post" action="{% url 'students:generate_logins' %}" class="d-flex justify-content-between align-items-center">
-            {% csrf_token %}<input type="hidden" name="student" value="{{ s.pk }}">
-            <span class="text-muted fst-italic">No login yet</span>
-            <button class="btn btn-sm btn-primary"><i class="bi bi-magic"></i> Generate</button>
-          </form>
+          <span class="text-muted fst-italic">No login yet — click Edit to create one.</span>
         {% endif %}
       </div>
     </div>
     {% endif %}
+
     <div class="card mb-3">
       <div class="card-header">Profile</div>
       <ul class="list-group list-group-flush small">
@@ -51,8 +47,12 @@
         <li class="list-group-item"><span class="text-muted">Address</span><br>{{ s.address|default:"—"|linebreaksbr }}</li>
       </ul>
     </div>
+
     <div class="card">
-      <div class="card-header">Attendance — {% if attendance_pct is not None %}{{ attendance_pct }}%{% else %}no records{% endif %}</div>
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Attendance — {% if attendance_pct is not None %}{{ attendance_pct }}%{% else %}no records{% endif %}</span>
+        <button class="btn btn-sm btn-outline-primary" data-popup="{% url 'students:attendance_detail' s.pk %}" data-title="Attendance — {{ s.full_name }}"><i class="bi bi-eye"></i> View</button>
+      </div>
       <div class="card-body small">
         {% for a in recent_attendance %}<span class="badge {% if a.status == 'P' %}text-bg-success{% elif a.status == 'A' %}text-bg-danger{% else %}text-bg-warning{% endif %} me-1 mb-1" title="{{ a.get_status_display }}">{{ a.date|date:"d M" }}</span>{% empty %}<span class="text-muted">Not marked yet.</span>{% endfor %}
       </div>
@@ -62,8 +62,11 @@
   <div class="col-lg-8">
     <div class="card mb-3">
       <div class="card-header d-flex justify-content-between align-items-center">
-        Fees — balance ₹{{ ledger.balance|floatformat:0|intcomma }}
-        {% if user_role == 'admin' or user_role == 'accountant' %}<a class="btn btn-sm btn-primary" href="{% url 'fees:collect' %}?student={{ s.pk }}">Collect fee</a>{% endif %}
+        <span>Fees — balance ₹{{ ledger.balance|floatformat:0|intcomma }}</span>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-outline-primary" data-popup="{% url 'students:fees_detail' s.pk %}" data-title="Fee details — {{ s.full_name }}"><i class="bi bi-eye"></i> View</button>
+          {% if user_role == 'admin' or user_role == 'accountant' %}<a class="btn btn-sm btn-primary" href="{% url 'fees:collect' %}?student={{ s.pk }}">Collect fee</a>{% endif %}
+        </div>
       </div>
       <div class="table-responsive"><table class="table table-sm mb-0">
         <thead><tr><th>Fee</th><th>Term</th><th>Due</th><th class="text-end">Amount</th><th class="text-end">Paid</th><th class="text-end">Balance</th></tr></thead>
@@ -74,19 +77,93 @@
         {% empty %}<tr><td colspan="6" class="text-muted text-center py-3">No fee structure set for this class.</td></tr>{% endfor %}</tbody>
         <tfoot><tr class="fw-semibold"><td colspan="3">Total</td><td class="text-end">₹{{ ledger.total|floatformat:0|intcomma }}</td><td class="text-end">₹{{ ledger.paid|floatformat:0|intcomma }}</td><td class="text-end">₹{{ ledger.balance|floatformat:0|intcomma }}</td></tr></tfoot>
       </table></div>
-      {% if payments %}
-      <div class="card-body border-top small">
-        <strong>Receipts:</strong>
-        {% for p in payments %}<a class="badge text-bg-light border text-decoration-none" href="{% url 'fees:receipt' p.pk %}">{{ p.receipt_no }} · ₹{{ p.amount|floatformat:0 }}</a> {% endfor %}
-      </div>
-      {% endif %}
     </div>
     <div class="card">
-      <div class="card-header">Exam results</div>
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Exam results</span>
+        <button class="btn btn-sm btn-outline-primary" data-popup="{% url 'students:results_detail' s.pk %}" data-title="Exam results — {{ s.full_name }}" {% if not exams %}disabled{% endif %}><i class="bi bi-eye"></i> View</button>
+      </div>
       <div class="card-body">
-        {% for e in exams %}<a class="btn btn-light btn-sm me-1 mb-1" href="{% url 'exams:report_card' e.pk s.pk %}"><i class="bi bi-file-earmark-text"></i> {{ e }}</a>{% empty %}<span class="text-muted small">No results yet.</span>{% endfor %}
+        {% for e in exams %}<span class="badge text-bg-light border me-1 mb-1 fw-normal fs-6"><i class="bi bi-file-earmark-text"></i> {{ e }}</span>{% empty %}<span class="text-muted small">No results yet.</span>{% endfor %}
       </div>
     </div>
   </div>
 </div>
+
+{# One popup window used by every View / Edit button: 80% of the screen for details #}
+<div class="modal fade" id="popup" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="popup-title"></h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="popup-body"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'vendor/html2pdf/html2pdf.bundle.min.js' %}"></script>
+<script>
+(function () {
+  const modalEl = document.getElementById('popup');
+  const modal = new bootstrap.Modal(modalEl);
+  const dialog = modalEl.querySelector('.modal-dialog');
+  const body = document.getElementById('popup-body');
+  const title = document.getElementById('popup-title');
+  const loading = '<div class="text-center text-muted py-5"><div class="spinner-border"></div><div class="mt-2">Loading…</div></div>';
+
+  function load(url, opts) {
+    body.innerHTML = loading;
+    return fetch(url, opts).then(r => {
+      if (r.status === 204) { location.reload(); return; }   // saved: refresh the profile
+      if (!r.ok) throw new Error(r.status);
+      return r.text().then(html => { body.innerHTML = html; wire(); });
+    }).catch(() => { body.innerHTML = '<div class="alert alert-danger">Could not load. Please try again.</div>'; });
+  }
+
+  // forms inside the popup are submitted in place
+  function wire() {
+    body.querySelectorAll('form[data-popup-form]').forEach(f => f.addEventListener('submit', e => {
+      e.preventDefault();
+      load(f.action, {method: 'POST', body: new FormData(f), headers: {'X-Requested-With': 'popup'}});
+    }));
+    body.querySelectorAll('[data-fill]').forEach(b => b.addEventListener('click', () => {
+      body.querySelector(b.dataset.fill).value = b.dataset.value;
+    }));
+  }
+
+  document.querySelectorAll('[data-popup]').forEach(btn => btn.addEventListener('click', () => {
+    dialog.classList.toggle('popup-large', btn.dataset.size !== 'small');
+    dialog.classList.toggle('modal-lg', btn.dataset.size === 'small');
+    title.textContent = btn.dataset.title || '';
+    modal.show();
+    load(btn.dataset.popup);
+  }));
+
+  // "Download PDF" for receipts and report cards: render the printable page into a PDF file
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('[data-pdf]');
+    if (!btn) return;
+    e.preventDefault();
+    const label = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Preparing…';
+    fetch(btn.dataset.pdf).then(r => r.text()).then(html => {
+      const doc = new DOMParser().parseFromString(html, 'text/html').querySelector('.doc');
+      const holder = document.createElement('div');
+      holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:800px;background:#fff';
+      holder.appendChild(doc);
+      document.body.appendChild(holder);
+      return html2pdf().set({
+        margin: 10, filename: btn.dataset.filename || 'document.pdf',
+        image: {type: 'jpeg', quality: 0.95}, html2canvas: {scale: 2, backgroundColor: '#ffffff'},
+        jsPDF: {unit: 'mm', format: 'a4', orientation: 'portrait'}
+      }).from(doc).save().finally(() => holder.remove());
+    }).catch(() => alert('Could not create the PDF. Use View → Print instead.'))
+      .finally(() => { btn.disabled = false; btn.innerHTML = label; });
+  });
+})();
+</script>
 {% endblock %}
