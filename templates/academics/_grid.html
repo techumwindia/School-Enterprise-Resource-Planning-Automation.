@@ -1,0 +1,12 @@
+<div class="table-responsive">
+  <table class="table table-bordered tt mb-0 bg-white">
+    <thead><tr><th>Day</th>{% for p in periods %}<th>P{{ p }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><th class="text-start">{{ r.day }}</th>
+        {% for e in r.cells %}<td>{% if e %}<div class="subj">{{ e.subject }}</div><div class="tchr">{{ e.teacher.name|default:"" }}</div>{% else %}<span class="text-muted">—</span>{% endif %}</td>{% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>

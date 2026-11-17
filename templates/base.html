@@ -1,0 +1,102 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ title|default:"Dashboard" }}{% endblock %} · {{ SCHOOL_NAME }}</title>
+  <link href="{% static 'vendor/bootstrap/bootstrap.min.css' %}" rel="stylesheet">
+  <link href="{% static 'vendor/bootstrap-icons/bootstrap-icons.min.css' %}" rel="stylesheet">
+  <link href="{% static 'css/erp.css' %}" rel="stylesheet">
+</head>
+<body>
+{% if user.is_authenticated %}
+<div class="erp-shell">
+  <aside class="erp-sidebar" id="sidebar">
+    <a class="brand" href="{% url 'accounts:dashboard' %}">
+      <span class="brand-mark"><i class="bi bi-mortarboard-fill"></i></span>
+      <span class="brand-text">{{ SCHOOL_NAME }}</span>
+    </a>
+    {% with r=user_role p=request.path %}
+    <nav class="nav flex-column">
+      <a class="nav-link {% if p == '/' %}active{% endif %}" href="{% url 'accounts:dashboard' %}"><i class="bi bi-grid-1x2"></i> Dashboard</a>
+      <a class="nav-link {% if p == '/notices/' %}active{% endif %}" href="{% url 'notices:board' %}"><i class="bi bi-megaphone"></i> Notice Board</a>
+
+      {% if r == 'admin' or r == 'teacher' or r == 'accountant' %}
+      <div class="nav-heading">Academics</div>
+      <a class="nav-link {% if '/students/' in p %}active{% endif %}" href="{% url 'students:student_list' %}"><i class="bi bi-people"></i> Students</a>
+      <a class="nav-link {% if '/academics/classes' in p %}active{% endif %}" href="{% url 'academics:class_list' %}"><i class="bi bi-door-open"></i> Classes</a>
+      <a class="nav-link {% if '/academics/timetable' in p %}active{% endif %}" href="{% url 'academics:timetable' %}"><i class="bi bi-calendar3-week"></i> Timetable</a>
+      {% endif %}
+
+      {% if r == 'admin' or r == 'teacher' %}
+      <a class="nav-link {% if p == '/attendance/' %}active{% endif %}" href="{% url 'attendance:mark' %}"><i class="bi bi-check2-square"></i> Mark Attendance</a>
+      {% endif %}
+      {% if r == 'admin' or r == 'teacher' or r == 'accountant' %}
+      <a class="nav-link {% if '/attendance/report' in p %}active{% endif %}" href="{% url 'attendance:report' %}"><i class="bi bi-clipboard-data"></i> Attendance Report</a>
+      {% endif %}
+      {% if r == 'admin' or r == 'teacher' %}
+      <div class="nav-heading">Examinations</div>
+      <a class="nav-link {% if '/exams/marks' in p %}active{% endif %}" href="{% url 'exams:entry' %}"><i class="bi bi-pencil-square"></i> Enter Marks</a>
+      <a class="nav-link {% if '/exams/results' in p %}active{% endif %}" href="{% url 'exams:results' %}"><i class="bi bi-trophy"></i> Results</a>
+      {% endif %}
+      {% if r == 'admin' %}
+      <a class="nav-link {% if p == '/exams/' %}active{% endif %}" href="{% url 'exams:exam_list' %}"><i class="bi bi-journal-text"></i> Exams</a>
+      {% endif %}
+
+      {% if r == 'admin' or r == 'accountant' %}
+      <div class="nav-heading">Finance</div>
+      <a class="nav-link {% if p == '/fees/' %}active{% endif %}" href="{% url 'fees:collect' %}"><i class="bi bi-cash-coin"></i> Collect Fees</a>
+      <a class="nav-link {% if '/fees/payments' in p %}active{% endif %}" href="{% url 'fees:payments' %}"><i class="bi bi-receipt"></i> Payments</a>
+      <a class="nav-link {% if '/fees/dues' in p %}active{% endif %}" href="{% url 'fees:dues' %}"><i class="bi bi-exclamation-diamond"></i> Pending Dues</a>
+      <a class="nav-link {% if '/fees/structure' in p %}active{% endif %}" href="{% url 'fees:structure_list' %}"><i class="bi bi-list-columns"></i> Fee Structure</a>
+      <a class="nav-link {% if '/staff/salary' in p %}active{% endif %}" href="{% url 'staff:salary_list' %}"><i class="bi bi-wallet2"></i> Salary</a>
+      {% endif %}
+
+      {% if r == 'admin' %}
+      <div class="nav-heading">Administration</div>
+      <a class="nav-link {% if p == '/staff/' %}active{% endif %}" href="{% url 'staff:staff_list' %}"><i class="bi bi-person-badge"></i> Staff</a>
+      <a class="nav-link {% if '/academics/subjects' in p %}active{% endif %}" href="{% url 'academics:subject_list' %}"><i class="bi bi-book"></i> Subjects</a>
+      <a class="nav-link {% if '/academics/years' in p %}active{% endif %}" href="{% url 'academics:year_list' %}"><i class="bi bi-calendar-range"></i> Academic Years</a>
+      <a class="nav-link {% if '/fees/types' in p %}active{% endif %}" href="{% url 'fees:type_list' %}"><i class="bi bi-tags"></i> Fee Types</a>
+      <a class="nav-link {% if '/notices/manage' in p %}active{% endif %}" href="{% url 'notices:notice_list' %}"><i class="bi bi-pin-angle"></i> Manage Notices</a>
+      <a class="nav-link {% if '/notices/events' in p %}active{% endif %}" href="{% url 'notices:event_list' %}"><i class="bi bi-calendar-event"></i> Events & Holidays</a>
+      <a class="nav-link {% if '/users' in p %}active{% endif %}" href="{% url 'accounts:user_list' %}"><i class="bi bi-shield-lock"></i> User Accounts</a>
+      {% endif %}
+    </nav>
+    {% endwith %}
+  </aside>
+
+  <div class="erp-main">
+    <header class="erp-topbar no-print">
+      <button class="btn btn-sm btn-light d-lg-none" onclick="document.getElementById('sidebar').classList.toggle('open')"><i class="bi bi-list"></i></button>
+      <div class="flex-grow-1"></div>
+      <div class="dropdown">
+        <button class="btn btn-sm btn-light dropdown-toggle" data-bs-toggle="dropdown">
+          <i class="bi bi-person-circle"></i> {{ user.get_full_name|default:user.username }}
+          <span class="badge text-bg-secondary ms-1 text-capitalize">{{ user_role }}</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><a class="dropdown-item" href="{% url 'accounts:password_change' %}"><i class="bi bi-key"></i> Change password</a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}<button class="dropdown-item"><i class="bi bi-box-arrow-right"></i> Log out</button></form></li>
+        </ul>
+      </div>
+    </header>
+
+    <main class="erp-content">
+      {% for m in messages %}
+      <div class="alert alert-{% if m.tags == 'error' %}danger{% else %}{{ m.tags }}{% endif %} alert-dismissible fade show no-print">
+        {{ m }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+      {% endfor %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+{% else %}
+  {% block public %}{% endblock %}
+{% endif %}
+<script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

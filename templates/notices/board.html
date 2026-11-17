@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Notice Board{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1 class="page-title">Notice Board</h1>
+  {% if user_role == 'admin' %}<a class="btn btn-primary" href="{% url 'notices:notice_add' %}"><i class="bi bi-plus-lg"></i> New notice</a>{% endif %}
+</div>
+<div class="row g-3">
+  <div class="col-lg-8">
+    {% for n in notices %}
+    <div class="card mb-3">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <h2 class="h6 fw-bold mb-1">{% if n.is_pinned %}<i class="bi bi-pin-angle-fill text-warning"></i> {% endif %}{{ n.title }}</h2>
+          <span class="small text-muted">{{ n.publish_date|date:"d M Y" }}</span>
+        </div>
+        <div class="small text-muted mb-2">{{ n.get_audience_display }}</div>
+        <div>{{ n.body|linebreaks }}</div>
+      </div>
+    </div>
+    {% empty %}<div class="card card-body text-muted">No notices yet.</div>{% endfor %}
+  </div>
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header">Events & holidays</div>
+      <ul class="list-group list-group-flush">
+        {% for e in events %}
+        <li class="list-group-item small {% if e.date < today %}text-muted{% endif %}">
+          <div class="d-flex justify-content-between"><strong>{{ e.title }}</strong><span>{{ e.date|date:"d M" }}{% if e.end_date %}–{{ e.end_date|date:"d M" }}{% endif %}</span></div>
+          {% if e.is_holiday %}<span class="badge text-bg-danger">Holiday</span>{% endif %} {{ e.description }}
+        </li>
+        {% empty %}<li class="list-group-item text-muted small">Nothing scheduled.</li>{% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Class {{ classroom }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Class {{ classroom }}</h1>
+    <div class="text-muted small">Class teacher: {{ classroom.class_teacher.name|default:"not assigned" }}{% if classroom.room_no %} · Room {{ classroom.room_no }}{% endif %}</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-light" href="{% url 'attendance:mark' %}?classroom={{ classroom.pk }}"><i class="bi bi-check2-square"></i> Attendance</a>
+    <a class="btn btn-light" href="{% url 'exams:results' %}?classroom={{ classroom.pk }}"><i class="bi bi-trophy"></i> Results</a>
+    <a class="btn btn-light" href="{% url 'students:export' %}?classroom={{ classroom.pk }}"><i class="bi bi-download"></i> CSV</a>
+  </div>
+</div>
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header">Students ({{ students|length }})</div>
+      <div class="table-responsive"><table class="table table-sm table-hover mb-0">
+        <thead><tr><th>Roll</th><th>Name</th><th>Adm. No</th></tr></thead>
+        <tbody>{% for s in students %}<tr><td>{{ s.roll_no|default:"" }}</td><td><a href="{% url 'students:detail' s.pk %}">{{ s.full_name }}</a></td><td>{{ s.admission_no }}</td></tr>
+        {% empty %}<tr><td colspan="3" class="text-muted text-center py-3">No students.</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card mb-3"><div class="card-header">Subjects</div><div class="card-body">
+      {% for sub in classroom.subjects.all %}<span class="badge text-bg-light border me-1">{{ sub }}</span>{% empty %}<span class="text-muted small">No subjects assigned.</span>{% endfor %}
+    </div></div>
+    <div class="card"><div class="card-header">Timetable</div><div class="card-body">{% include "academics/_grid.html" %}</div></div>
+  </div>
+</div>
+{% endblock %}

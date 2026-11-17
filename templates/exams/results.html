@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Results{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1 class="page-title">Results {% if exam %}· {{ exam }} · {{ classroom }}{% endif %}</h1>
+  <div class="d-flex gap-2">{% include "exams/_picker.html" %}<button class="btn btn-light no-print" onclick="window.print()"><i class="bi bi-printer"></i></button></div>
+</div>
+{% if rows %}
+<div class="row g-3 mb-3">
+  <div class="col-md-4"><div class="card stat"><div class="stat-icon bg-soft-green"><i class="bi bi-check2-circle"></i></div><div><div class="stat-value">{{ pass_pct }}%</div><div class="stat-label">Pass percentage ({{ passed }} / {{ rows|length }})</div></div></div></div>
+  <div class="col-md-8 d-flex align-items-center"><span class="small text-muted">{% if exam.is_published %}<i class="bi bi-eye"></i> Published — visible to students and parents.{% else %}<i class="bi bi-eye-slash"></i> Not published yet. Students and parents cannot see these results until an admin ticks “Is published” on the exam.{% endif %}</span></div>
+</div>
+{% endif %}
+<div class="card"><div class="table-responsive"><table class="table table-sm table-hover mb-0">
+  <thead><tr><th>Rank</th><th>Student</th>{% for s in subjects %}<th class="text-center">{{ s.code }}</th>{% endfor %}<th class="text-end">Total</th><th class="text-end">%</th><th>Grade</th><th>Result</th><th class="no-print"></th></tr></thead>
+  <tbody>{% for r in rows %}
+    <tr><td>{{ r.rank|default:"—" }}</td><td>{{ r.s.full_name }}</td>
+      {% for m in r.cells %}<td class="text-center {% if m.absent or m.marks < exam.pass_marks %}text-danger{% endif %}">{% if m.absent %}AB{% elif m %}{{ m.marks|floatformat:"-1" }}{% else %}<span class="text-muted">·</span>{% endif %}</td>{% endfor %}
+      <td class="text-end fw-semibold">{{ r.total|floatformat:"-1" }}</td><td class="text-end">{{ r.pct|default:"—" }}</td><td>{{ r.grade }}</td>
+      <td><span class="badge {% if r.result == 'PASS' %}text-bg-success{% else %}text-bg-danger{% endif %}">{{ r.result }}</span></td>
+      <td class="no-print"><a class="btn btn-sm btn-light" href="{% url 'exams:report_card' exam.pk r.s.pk %}" title="Report card"><i class="bi bi-file-earmark-text"></i></a></td></tr>
+  {% empty %}<tr><td colspan="99" class="text-center text-muted py-4">No marks entered for this exam and class yet.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

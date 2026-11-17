@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Timetable{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1 class="page-title">Timetable {% if selected %}· {{ selected }}{% endif %}</h1>
+  <div class="d-flex gap-2 no-print">
+    <form method="get"><select name="classroom" class="form-select" onchange="this.form.submit()">
+      {% for c in classes %}<option value="{{ c.pk }}" {% if c == selected %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select></form>
+    <button class="btn btn-light" onclick="window.print()"><i class="bi bi-printer"></i></button>
+    {% if can_edit %}<a class="btn btn-primary" href="{% url 'academics:tt_list' %}?classroom={{ selected.pk }}"><i class="bi bi-pencil"></i> Edit entries</a>{% endif %}
+  </div>
+</div>
+<div class="card card-body">{% include "academics/_grid.html" %}</div>
+{% endblock %}

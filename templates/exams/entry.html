@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Enter Marks{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1 class="page-title">Enter Marks</h1>
+  {% include "exams/_picker.html" with show_subject=True %}
+</div>
+{% if not exam %}<div class="alert alert-info">Create an exam first (Examinations → Exams).</div>
+{% elif classroom and subject %}
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="exam" value="{{ exam.pk }}"><input type="hidden" name="classroom" value="{{ classroom.pk }}"><input type="hidden" name="subject" value="{{ subject.pk }}">
+  <div class="card">
+    <div class="card-header">{{ exam }} · {{ classroom }} · {{ subject }} <span class="text-muted fw-normal small">(max {{ exam.max_marks }}, pass {{ exam.pass_marks }})</span></div>
+    <div class="table-responsive"><table class="table mb-0">
+      <thead><tr><th>Roll</th><th>Student</th><th style="width:160px">Marks</th><th>Absent</th></tr></thead>
+      <tbody>{% for r in rows %}
+        <tr><td>{{ r.s.roll_no|default:"" }}</td><td>{{ r.s.full_name }}</td>
+          <td><input name="m_{{ r.s.pk }}" type="number" step="0.5" min="0" max="{{ exam.max_marks }}" class="form-control form-control-sm" value="{% if r.m.marks is not None %}{{ r.m.marks|floatformat:'-1' }}{% endif %}"></td>
+          <td><input type="checkbox" class="form-check-input" name="ab_{{ r.s.pk }}" {% if r.m.absent %}checked{% endif %}></td></tr>
+      {% empty %}<tr><td colspan="4" class="text-center text-muted py-4">No students in this class.</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% if rows %}<div class="card-footer bg-white text-end"><button class="btn btn-primary"><i class="bi bi-check2"></i> Save marks</button></div>{% endif %}
+  </div>
+</form>
+{% endif %}
+{% endblock %}

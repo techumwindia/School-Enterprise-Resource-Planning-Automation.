@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Payslip{% endblock %}
+{% block content %}
+<div class="no-print mb-3 d-flex gap-2"><button class="btn btn-primary" onclick="window.print()"><i class="bi bi-printer"></i> Print</button><a class="btn btn-light" href="{% url 'staff:salary_list' %}">Back</a></div>
+<div class="doc card">
+  <div class="doc-head"><h2>{{ SCHOOL_NAME }}</h2><div class="small">{{ SCHOOL_ADDRESS }} · {{ SCHOOL_PHONE }}</div></div>
+  <div class="doc-title">Payslip — {{ p.month|date:"F Y" }}</div>
+  <table class="table table-sm">
+    <tr><th>Employee</th><td>{{ p.staff.name }} ({{ p.staff.employee_id }})</td><th>Designation</th><td>{{ p.staff.designation }}</td></tr>
+    <tr><th>Paid on</th><td>{{ p.paid_on|date:"d M Y" }}</td><th>Remarks</th><td>{{ p.remarks|default:"—" }}</td></tr>
+  </table>
+  <table class="table table-bordered">
+    <tr><th>Basic pay</th><td class="text-end">₹{{ p.basic|intcomma }}</td></tr>
+    <tr><th>Allowances</th><td class="text-end">₹{{ p.allowances|intcomma }}</td></tr>
+    <tr><th>Deductions</th><td class="text-end">− ₹{{ p.deductions|intcomma }}</td></tr>
+    <tr class="fw-bold"><th>Net pay</th><td class="text-end">₹{{ p.net_pay|intcomma }}</td></tr>
+  </table>
+  <div class="d-flex justify-content-between mt-5 small"><span>Employee signature</span><span>Principal / Correspondent</span></div>
+</div>
+{% endblock %}

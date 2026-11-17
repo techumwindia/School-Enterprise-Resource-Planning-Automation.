@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}{{ s.full_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">{{ s.full_name }}</h1>
+    <div class="text-muted small">Adm. No {{ s.admission_no }} · Class {{ s.classroom|default:"—" }}{% if s.roll_no %} · Roll {{ s.roll_no }}{% endif %}{% if not s.is_active %} · <span class="text-danger">Left school</span>{% endif %}</div>
+  </div>
+  {% if user_role == 'admin' %}<a class="btn btn-light" href="{% url 'students:student_edit' s.pk %}"><i class="bi bi-pencil"></i> Edit</a>{% endif %}
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card mb-3">
+      <div class="card-header">Profile</div>
+      <ul class="list-group list-group-flush small">
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Gender</span>{{ s.get_gender_display }}</li>
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Date of birth</span>{{ s.date_of_birth|date:"d M Y" }}</li>
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Blood group</span>{{ s.blood_group|default:"—" }}</li>
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">EMIS No.</span>{{ s.emis_no|default:"—" }}</li>
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Admitted</span>{{ s.admission_date|date:"d M Y" }}</li>
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Father</span>{{ s.father_name|default:"—" }}</li>
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Mother</span>{{ s.mother_name|default:"—" }}</li>
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">Phone</span>{{ s.guardian_phone }}</li>
+        <li class="list-group-item d-flex justify-content-between"><span class="text-muted">School bus</span>{{ s.uses_transport|yesno:"Yes,No" }}</li>
+        <li class="list-group-item"><span class="text-muted">Address</span><br>{{ s.address|default:"—"|linebreaksbr }}</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header">Attendance — {% if attendance_pct is not None %}{{ attendance_pct }}%{% else %}no records{% endif %}</div>
+      <div class="card-body small">
+        {% for a in recent_attendance %}<span class="badge {% if a.status == 'P' %}text-bg-success{% elif a.status == 'A' %}text-bg-danger{% else %}text-bg-warning{% endif %} me-1 mb-1" title="{{ a.get_status_display }}">{{ a.date|date:"d M" }}</span>{% empty %}<span class="text-muted">Not marked yet.</span>{% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        Fees — balance ₹{{ ledger.balance|floatformat:0|intcomma }}
+        {% if user_role == 'admin' or user_role == 'accountant' %}<a class="btn btn-sm btn-primary" href="{% url 'fees:collect' %}?student={{ s.pk }}">Collect fee</a>{% endif %}
+      </div>
+      <div class="table-responsive"><table class="table table-sm mb-0">
+        <thead><tr><th>Fee</th><th>Term</th><th>Due</th><th class="text-end">Amount</th><th class="text-end">Paid</th><th class="text-end">Balance</th></tr></thead>
+        <tbody>{% for r in ledger.rows %}
+          <tr><td>{{ r.fee.fee_type }}</td><td>{{ r.fee.term }}</td><td>{{ r.fee.due_date|date:"d M Y"|default:"—" }}</td>
+          <td class="text-end">₹{{ r.fee.amount|floatformat:0|intcomma }}</td><td class="text-end">₹{{ r.paid|floatformat:0|intcomma }}</td>
+          <td class="text-end {% if r.overdue %}text-danger fw-semibold{% endif %}">₹{{ r.balance|floatformat:0|intcomma }}</td></tr>
+        {% empty %}<tr><td colspan="6" class="text-muted text-center py-3">No fee structure set for this class.</td></tr>{% endfor %}</tbody>
+        <tfoot><tr class="fw-semibold"><td colspan="3">Total</td><td class="text-end">₹{{ ledger.total|floatformat:0|intcomma }}</td><td class="text-end">₹{{ ledger.paid|floatformat:0|intcomma }}</td><td class="text-end">₹{{ ledger.balance|floatformat:0|intcomma }}</td></tr></tfoot>
+      </table></div>
+      {% if payments %}
+      <div class="card-body border-top small">
+        <strong>Receipts:</strong>
+        {% for p in payments %}<a class="badge text-bg-light border text-decoration-none" href="{% url 'fees:receipt' p.pk %}">{{ p.receipt_no }} · ₹{{ p.amount|floatformat:0 }}</a> {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    <div class="card">
+      <div class="card-header">Exam results</div>
+      <div class="card-body">
+        {% for e in exams %}<a class="btn btn-light btn-sm me-1 mb-1" href="{% url 'exams:report_card' e.pk s.pk %}"><i class="bi bi-file-earmark-text"></i> {{ e }}</a>{% empty %}<span class="text-muted small">No results yet.</span>{% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

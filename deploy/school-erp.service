@@ -1,0 +1,15 @@
+# /etc/systemd/system/school-erp.service
+[Unit]
+Description=School ERP (Gunicorn)
+After=network.target mysql.service
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/school-erp
+EnvironmentFile=/var/www/school-erp/.env
+ExecStart=/var/www/school-erp/venv/bin/gunicorn school_erp.wsgi:application --bind 127.0.0.1:8005 --workers 3 --timeout 60
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+<form class="d-flex flex-wrap gap-2 no-print" method="get">
+  <select name="exam" class="form-select w-auto" onchange="this.form.submit()">
+    {% for e in exams %}<option value="{{ e.pk }}" {% if e == exam %}selected{% endif %}>{{ e }}</option>{% endfor %}
+  </select>
+  <select name="classroom" class="form-select w-auto" onchange="this.form.submit()">
+    {% for c in classes %}<option value="{{ c.pk }}" {% if c == classroom %}selected{% endif %}>{{ c }}</option>{% endfor %}
+  </select>
+  {% if subjects is not None and show_subject %}
+  <select name="subject" class="form-select w-auto" onchange="this.form.submit()">
+    {% for s in subjects %}<option value="{{ s.pk }}" {% if s == subject %}selected{% endif %}>{{ s }}</option>{% endfor %}
+  </select>
+  {% endif %}
+</form>

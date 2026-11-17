@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Report Card · {{ s.full_name }}{% endblock %}
+{% block content %}
+<div class="no-print mb-3"><button class="btn btn-primary" onclick="window.print()"><i class="bi bi-printer"></i> Print report card</button></div>
+<div class="doc card">
+  <div class="doc-head"><h2>{{ SCHOOL_NAME }}</h2><div class="small">{{ SCHOOL_ADDRESS }} · {{ SCHOOL_PHONE }}</div></div>
+  <div class="doc-title">Progress Report — {{ exam.name }} {{ exam.academic_year }}</div>
+  <table class="table table-sm table-borderless">
+    <tr><th style="width:20%">Name</th><td>{{ s.full_name }}</td><th style="width:18%">Adm. No</th><td>{{ s.admission_no }}</td></tr>
+    <tr><th>Class</th><td>{{ s.classroom }}</td><th>Roll No</th><td>{{ s.roll_no|default:"—" }}</td></tr>
+    <tr><th>Father</th><td>{{ s.father_name|default:"—" }}</td><th>Date of birth</th><td>{{ s.date_of_birth|date:"d M Y" }}</td></tr>
+  </table>
+  <table class="table table-bordered">
+    <thead><tr><th>Subject</th><th class="text-center">Max</th><th class="text-center">Marks</th><th class="text-center">Grade</th><th class="text-center">Status</th></tr></thead>
+    <tbody>{% for l in lines %}
+      <tr><td>{{ l.m.subject }}</td><td class="text-center">{{ exam.max_marks }}</td>
+        <td class="text-center">{% if l.m.absent %}AB{% else %}{{ l.m.marks|floatformat:"-1" }}{% endif %}</td>
+        <td class="text-center">{{ l.grade }}</td><td class="text-center {% if not l.pass %}text-danger{% endif %}">{{ l.pass|yesno:"Pass,Fail" }}</td></tr>
+    {% empty %}<tr><td colspan="5" class="text-center text-muted">No marks recorded.</td></tr>{% endfor %}</tbody>
+    <tfoot><tr class="fw-bold"><td>Total</td><td class="text-center">{{ maximum }}</td><td class="text-center">{{ total|floatformat:"-1" }}</td><td class="text-center">{{ grade }}</td><td class="text-center">{{ result }}</td></tr></tfoot>
+  </table>
+  <div class="row small">
+    <div class="col">Percentage: <strong>{{ pct|default:"—" }}%</strong></div>
+    <div class="col">Class rank: <strong>{{ rank|default:"—" }}</strong></div>
+    <div class="col">Result: <strong class="{% if result == 'FAIL' %}text-danger{% else %}text-success{% endif %}">{{ result }}</strong></div>
+  </div>
+  <p class="small text-muted mt-3 mb-0">Grades: A1 91–100 · A2 81–90 · B1 71–80 · B2 61–70 · C1 51–60 · C2 41–50 · D 35–40 · E below 35</p>
+  <div class="d-flex justify-content-between mt-5 small"><span>Class teacher</span><span>Parent</span><span>Principal</span></div>
+</div>
+{% endblock %}

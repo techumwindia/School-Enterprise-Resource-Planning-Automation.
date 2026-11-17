@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Pending Dues{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1 class="page-title">Pending Dues {% if year %}· {{ year }}{% endif %}</h1>
+  <form class="d-flex gap-2 no-print" method="get">
+    <select name="classroom" class="form-select" onchange="this.form.submit()"><option value="">All classes</option>
+      {% for c in classes %}<option value="{{ c.pk }}" {% if c == classroom %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
+    <button type="button" class="btn btn-light" onclick="window.print()"><i class="bi bi-printer"></i></button>
+  </form>
+</div>
+<div class="alert alert-warning">Total outstanding: <strong>₹{{ grand|floatformat:0|intcomma }}</strong> from {{ rows|length }} students.</div>
+<div class="card"><div class="table-responsive"><table class="table table-sm table-hover mb-0">
+  <thead><tr><th>Student</th><th>Class</th><th>Parent phone</th><th class="text-end">Total</th><th class="text-end">Paid</th><th class="text-end">Balance</th><th class="text-end">Overdue</th><th class="no-print"></th></tr></thead>
+  <tbody>{% for r in rows %}
+    <tr><td>{{ r.s.full_name }} <span class="text-muted small">{{ r.s.admission_no }}</span></td><td>{{ r.s.classroom }}</td><td>{{ r.s.guardian_phone }}</td>
+      <td class="text-end">₹{{ r.total|floatformat:0|intcomma }}</td><td class="text-end">₹{{ r.paid|floatformat:0|intcomma }}</td>
+      <td class="text-end fw-semibold">₹{{ r.balance|floatformat:0|intcomma }}</td>
+      <td class="text-end {% if r.overdue %}text-danger{% endif %}">{% if r.overdue %}₹{{ r.overdue|floatformat:0|intcomma }}{% else %}—{% endif %}</td>
+      <td class="no-print text-end"><a class="btn btn-sm btn-primary" href="{% url 'fees:collect' %}?student={{ r.s.pk }}">Collect</a></td></tr>
+  {% empty %}<tr><td colspan="8" class="text-center text-muted py-4">No pending dues 🎉</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

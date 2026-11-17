@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Attendance Report{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1 class="page-title">Attendance · {{ classroom }} · {{ month_label }}</h1>
+  <form class="d-flex gap-2 no-print" method="get">
+    <select name="classroom" class="form-select" onchange="this.form.submit()">
+      {% for c in classes %}<option value="{{ c.pk }}" {% if c == classroom %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select>
+    <input type="month" name="month" value="{{ month_value }}" class="form-control" onchange="this.form.submit()">
+    <button type="button" class="btn btn-light" onclick="window.print()"><i class="bi bi-printer"></i></button>
+  </form>
+</div>
+<div class="card">
+  <div class="table-responsive"><table class="table table-sm table-bordered mb-0 small">
+    <thead><tr><th>Student</th>{% for d in days %}<th class="att-cell {% if d.weekday == 6 %}bg-light{% endif %}">{{ d.day }}</th>{% endfor %}<th>P</th><th>A</th><th>%</th></tr></thead>
+    <tbody>{% for r in rows %}
+      <tr><td class="text-nowrap">{{ r.s.full_name }}</td>
+        {% for c in r.cells %}<td class="att-cell att-{{ c }}">{{ c }}</td>{% endfor %}
+        <td>{{ r.present }}</td><td>{{ r.absent }}</td><td class="fw-semibold {% if r.pct is not None and r.pct < 75 %}text-danger{% endif %}">{{ r.pct|default:"—" }}</td></tr>
+    {% empty %}<tr><td colspan="40" class="text-center text-muted py-4">No students.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+<p class="small text-muted mt-2">Students below 75% attendance are highlighted in red.</p>
+{% endblock %}

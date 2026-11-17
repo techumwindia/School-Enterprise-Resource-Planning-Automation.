@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Login{% endblock %}
+{% block public %}
+<div class="login-wrap">
+  <div class="card login-card">
+    <div class="card-body p-4">
+      <div class="text-center mb-4">
+        <div class="brand-mark mx-auto mb-2" style="width:56px;height:56px;font-size:1.6rem"><i class="bi bi-mortarboard-fill"></i></div>
+        <h1 class="h5 fw-bold mb-0">{{ SCHOOL_NAME }}</h1>
+        <div class="text-muted small">School ERP · Sign in</div>
+      </div>
+      {% if form.errors %}<div class="alert alert-danger py-2 small">Incorrect username or password.</div>{% endif %}
+      <form method="post">
+        {% csrf_token %}
+        <div class="mb-3">
+          <label class="form-label small">Username</label>
+          <input name="username" class="form-control" autofocus required value="{{ form.username.value|default:'' }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small">Password</label>
+          <input name="password" type="password" class="form-control" required>
+        </div>
+        <input type="hidden" name="next" value="{{ next }}">
+        <button class="btn btn-primary w-100">Sign in</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
