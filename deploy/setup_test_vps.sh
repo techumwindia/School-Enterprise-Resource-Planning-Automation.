@@ -1,21 +1,31 @@
 #!/usr/bin/env bash
 # One-command TEST deployment of School ERP on the VPS (demo data, SQLite).
 # Usage (as root):  bash deploy/setup_test_vps.sh
-# Result: http://<server-ip>:8085  (Gunicorn on 127.0.0.1:8005, Nginx on port 8085)
+# Result: http://<server-ip>:<public port>  — free ports are picked automatically (from 8010 / 8090)
+# and remembered in /etc/school-erp.ports for re-runs.
 set -euo pipefail
 
 APP_DIR=/var/www/school-erp
 REPO=https://github.com/techumwindia/School-Enterprise-Resource-Planning-Automation.
-APP_PORT=8005      # internal Gunicorn port
-PUBLIC_PORT=8085   # port opened in the browser
 IP=$(hostname -I | awk '{print $1}')
+PORTS_FILE=/etc/school-erp.ports
 
-for p in $APP_PORT $PUBLIC_PORT; do
-  if ss -ltn | awk '{print $4}' | grep -q ":$p\$" && ! systemctl is-active --quiet school-erp; then
-    echo "Port $p is already in use on this server. Edit APP_PORT/PUBLIC_PORT at the top of this script." >&2
-    exit 1
-  fi
-done
+port_in_use() { ss -ltnH | awk '{print $4}' | grep -qE ":$1\$"; }
+free_port() {           # first free port starting at $1
+  local p=$1
+  while port_in_use "$p"; do p=$((p + 1)); done
+  echo "$p"
+}
+
+if [ -f "$PORTS_FILE" ]; then
+  . "$PORTS_FILE"       # re-run: keep the ports chosen the first time
+else
+  APP_PORT=$(free_port 8010)                 # internal Gunicorn port
+  PUBLIC_PORT=$(free_port 8090)              # port opened in the browser
+  [ "$PUBLIC_PORT" = "$APP_PORT" ] && PUBLIC_PORT=$(free_port $((APP_PORT + 1)))
+  printf 'APP_PORT=%s\nPUBLIC_PORT=%s\n' "$APP_PORT" "$PUBLIC_PORT" > "$PORTS_FILE"
+fi
+echo "==> Using internal port $APP_PORT, public port $PUBLIC_PORT"
 
 echo "==> Installing packages"
 apt-get update -qq
@@ -49,6 +59,8 @@ SCHOOL_PHONE=+91 00000 00000
 SCHOOL_EMAIL=office@school.example
 EOF
 fi
+
+sed -i "s#^DJANGO_CSRF_TRUSTED_ORIGINS=.*#DJANGO_CSRF_TRUSTED_ORIGINS=http://$IP:$PUBLIC_PORT#" .env
 
 echo "==> Database, demo data, static files"
 set -a; . ./.env; set +a
