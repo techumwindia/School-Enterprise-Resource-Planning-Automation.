@@ -10,10 +10,11 @@
 </div>
 
 {% if searchable or filters %}
-<form class="card card-body mb-3 py-2" method="get">
+<form class="card card-body mb-3 py-2" method="get" id="list-filter">
   <div class="row g-2 align-items-center">
     {% if searchable %}
-    <div class="col-md-4"><input class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Search…"></div>
+    <div class="col-md-4"><div class="position-relative"><input class="form-control form-control-sm" type="search" name="q" id="live-q" value="{{ q }}" placeholder="Type to search…" autocomplete="off">
+      <span class="spinner-border spinner-border-sm text-secondary position-absolute d-none" id="live-spin" style="right:.6rem;top:.45rem"></span></div></div>
     {% endif %}
     {% for f in filters %}
     <div class="col-md-3">
@@ -25,12 +26,11 @@
       </select>
     </div>
     {% endfor %}
-    <div class="col-auto"><button class="btn btn-sm btn-outline-secondary"><i class="bi bi-search"></i> Filter</button></div>
   </div>
 </form>
 {% endif %}
 
-<div class="card">
+<div class="card" id="list-results">
   <div class="table-responsive">
     <table class="table table-hover mb-0">
       <thead><tr>
@@ -68,4 +68,49 @@
   </div>
   {% endif %}
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+// Live search: results update while typing (no Enter / Search button needed)
+(function () {
+  const input = document.getElementById('live-q');
+  const form = document.getElementById('list-filter');
+  const spin = document.getElementById('live-spin');
+  if (!input || !form) return;
+  let timer = null, controller = null, last = input.value;
+
+  function run() {
+    if (input.value === last) return;
+    last = input.value;
+    const params = new URLSearchParams(new FormData(form));
+    const sort = new URLSearchParams(location.search).get('sort');
+    if (sort) params.set('sort', sort);
+    params.delete('page');
+    const url = location.pathname + '?' + params.toString();
+    if (controller) controller.abort();
+    controller = new AbortController();
+    spin.classList.remove('d-none');
+    fetch(url, {signal: controller.signal, headers: {'X-Requested-With': 'live-search'}})
+      .then(r => r.text())
+      .then(html => {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const fresh = doc.getElementById('list-results');
+        const current = document.getElementById('list-results');
+        if (fresh && current) current.replaceWith(fresh);
+        // keep sort links in the headings pointing at the new search
+        history.replaceState(null, '', url);
+      })
+      .catch(err => { if (err.name !== 'AbortError') form.submit(); })
+      .finally(() => spin.classList.add('d-none'));
+  }
+
+  input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, 300); });
+  form.addEventListener('submit', e => { e.preventDefault(); clearTimeout(timer); last = null; run(); });
+  // filters (class / status) also refresh in place instead of reloading the page
+  form.querySelectorAll('select').forEach(sel => {
+    sel.removeAttribute('onchange');
+    sel.addEventListener('change', () => { last = null; run(); });
+  });
+})();
+</script>
 {% endblock %}
