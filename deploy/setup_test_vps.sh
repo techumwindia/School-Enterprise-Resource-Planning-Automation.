@@ -32,6 +32,8 @@ apt-get update -qq
 apt-get install -y -qq python3-venv git nginx >/dev/null
 
 echo "==> Getting the code"
+# The app folder belongs to www-data; let root run git in it
+git config --global --get-all safe.directory | grep -qx "$APP_DIR" || git config --global --add safe.directory "$APP_DIR"
 if [ -d "$APP_DIR/.git" ]; then
   git -C "$APP_DIR" pull -q
 else

@@ -86,7 +86,7 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d erp.yourschool.in   # HTTPS
 ```
 
-Update later with: `git pull && venv/bin/pip install -r requirements.txt && venv/bin/python manage.py migrate && venv/bin/python manage.py collectstatic --noinput && sudo systemctl restart school-erp`.
+Update later with (run once first: `git config --global --add safe.directory /var/www/school-erp`): `git pull && venv/bin/pip install -r requirements.txt && venv/bin/python manage.py migrate && venv/bin/python manage.py collectstatic --noinput && sudo systemctl restart school-erp`.
 
 Generate a secret key with: `python -c "import secrets; print(secrets.token_urlsafe(50))"`.
 
