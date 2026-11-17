@@ -112,5 +112,9 @@ class PasswordChange(auth_views.PasswordChangeView):
         return style_form(super().get_form(form_class))
 
     def form_valid(self, form):
+        resp = super().form_valid(form)
+        profile = self.request.user.profile
+        profile.issued_password = ""
+        profile.save(update_fields=["issued_password"])
         messages.success(self.request, "Password changed.")
-        return super().form_valid(form)
+        return resp

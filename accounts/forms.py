@@ -7,7 +7,7 @@ from .models import Role
 class UserForm(forms.ModelForm):
     role = forms.ChoiceField(choices=Role.choices)
     phone = forms.CharField(required=False)
-    password = forms.CharField(widget=forms.PasswordInput, required=False,
+    password = forms.CharField(required=False,
                                help_text="Leave blank to keep the current password (when editing).")
 
     class Meta:
@@ -31,5 +31,7 @@ class UserForm(forms.ModelForm):
         profile = user.profile
         profile.role = self.cleaned_data["role"]
         profile.phone = self.cleaned_data["phone"]
+        if self.cleaned_data["password"]:
+            profile.issued_password = self.cleaned_data["password"]
         profile.save()
         return user

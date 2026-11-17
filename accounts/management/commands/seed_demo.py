@@ -215,5 +215,6 @@ class Command(BaseCommand):
         u.is_superuser = u.is_staff = superuser
         u.save()
         u.profile.role = role
+        u.profile.issued_password = password
         u.profile.save()
         return u

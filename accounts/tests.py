@@ -179,3 +179,97 @@ class SmokeTest(TestCase):
                     for direction in ("", "-"):
                         r = self.client.get(f"{url}?sort={direction}{h_i}")
                         self.assertEqual(r.status_code, 200, f"{name} sort {direction}{h_i}")
+
+    # ---- Student / parent logins managed from the student form ----
+    def student_post_data(self, s, **extra):
+        data = {"admission_no": s.admission_no, "first_name": s.first_name, "last_name": s.last_name,
+                "gender": s.gender, "date_of_birth": s.date_of_birth.isoformat(), "classroom": s.classroom_id,
+                "roll_no": s.roll_no or "", "admission_date": s.admission_date.isoformat(),
+                "father_name": s.father_name, "mother_name": s.mother_name, "guardian_phone": s.guardian_phone,
+                "is_active": "on",
+                "student_username": s.user.username if s.user else "",
+                "student_password": s.user.profile.issued_password if s.user else "",
+                "parent_username": s.parent_user.username if s.parent_user else "",
+                "parent_password": s.parent_user.profile.issued_password if s.parent_user else ""}
+        data.update(extra)
+        return data
+
+    def test_profile_shows_logins_to_admin_only(self):
+        s = Student.objects.get(user__username="student1")
+        url = reverse("students:detail", args=[s.pk])
+        self.login("admin")
+        page = self.client.get(url).content.decode()
+        for text in ("Login details", "student1", "student123", "parent1", "parent123"):
+            self.assertIn(text, page)
+        self.login("teacher1")
+        self.assertNotIn("student123", self.client.get(url).content.decode())
+        self.login("parent1")
+        self.assertNotIn("parent123", self.client.get(url).content.decode())
+
+    def test_edit_form_changes_logins(self):
+        from django.contrib.auth import authenticate
+        s = Student.objects.get(user__username="student1")
+        self.login("admin")
+        edit = reverse("students:student_edit", args=[s.pk])
+        form = self.client.get(edit).context["form"]
+        self.assertEqual(form["student_username"].value(), "student1")
+        self.assertEqual(form["parent_password"].value(), "parent123")
+        # unchanged form keeps the passwords working
+        r = self.client.post(edit, self.student_post_data(s))
+        self.assertEqual(r.status_code, 302, r.context and r.context["form"].errors)
+        self.assertIsNotNone(authenticate(username="parent1", password="parent123"))
+        # rename student login + new passwords
+        r = self.client.post(edit, self.student_post_data(s, student_username="vignesh10a",
+                                                         student_password="newpass1", parent_password="pp2024"))
+        self.assertEqual(r.status_code, 302, r.context and r.context["form"].errors)
+        self.assertIsNotNone(authenticate(username="vignesh10a", password="newpass1"))
+        self.assertIsNone(authenticate(username="student1", password="student123"))
+        self.assertIsNotNone(authenticate(username="parent1", password="pp2024"))
+        page = self.client.get(reverse("students:detail", args=[s.pk])).content.decode()
+        self.assertIn("vignesh10a", page)
+        self.assertIn("pp2024", page)
+
+    def test_new_student_logins_and_sibling_parent(self):
+        from django.contrib.auth import authenticate
+        self.login("admin")
+        s = Student.objects.get(user__username="student1")
+        base = self.student_post_data(s, admission_no="SIB1", first_name="Kavin",
+                                      student_username="kavin1", student_password="kavin123",
+                                      parent_username="parent1", parent_password="")
+        r = self.client.post(reverse("students:student_add"), base)
+        self.assertEqual(r.status_code, 302, r.context and r.context["form"].errors)
+        sib = Student.objects.get(admission_no="SIB1")
+        self.assertEqual(sib.parent_user, s.parent_user)                 # same parent login
+        self.assertIsNotNone(authenticate(username="kavin1", password="kavin123"))
+        self.assertIsNotNone(authenticate(username="parent1", password="parent123"))  # untouched
+        self.login("parent1")
+        self.assertEqual(len(self.client.get(reverse("accounts:dashboard")).context["children"]), 2)
+
+    def test_login_form_validation(self):
+        self.login("admin")
+        s = Student.objects.exclude(user__username="student1").filter(user__isnull=True).first()
+        edit = reverse("students:student_edit", args=[s.pk])
+        # username of a teacher is refused
+        r = self.client.post(edit, self.student_post_data(s, student_username="teacher1", student_password="abcd"))
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("student_username", r.context["form"].errors)
+        # a new login needs a password
+        r = self.client.post(edit, self.student_post_data(s, parent_username="newparent"))
+        self.assertIn("parent_password", r.context["form"].errors)
+        # student and parent can't share one username
+        r = self.client.post(edit, self.student_post_data(s, student_username="same1", student_password="abcd",
+                                                         parent_username="same1", parent_password="abcd"))
+        self.assertIn("parent_username", r.context["form"].errors)
+
+    def test_own_password_change_hides_issued_password(self):
+        s = Student.objects.get(user__username="student1")
+        self.login("parent1")
+        self.client.post(reverse("accounts:password_change"), {
+            "old_password": "parent123", "new_password1": "MySecret#2026", "new_password2": "MySecret#2026"})
+        self.login_as = None
+        self.client.logout()
+        self.assertTrue(self.client.login(username="parent1", password="MySecret#2026"))
+        self.login("admin")
+        page = self.client.get(reverse("students:detail", args=[s.pk])).content.decode()
+        self.assertIn("changed by user", page)
+        self.assertNotIn("MySecret#2026", page)

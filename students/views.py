@@ -1,6 +1,8 @@
 import csv
 
 from django import forms
+from django.contrib.auth.models import User
+from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.core.exceptions import PermissionDenied
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
@@ -18,10 +20,97 @@ from .models import Student
 
 
 class StudentForm(forms.ModelForm):
+    """Student details plus the student's and parent's login (username + password)."""
+    student_username = forms.CharField(required=False, max_length=150, validators=[UnicodeUsernameValidator()],
+                                       help_text="Leave blank if the student doesn't need a login.")
+    student_password = forms.CharField(required=False, max_length=128,
+                                       help_text="Type a new password to set or change it.")
+    parent_username = forms.CharField(required=False, max_length=150, validators=[UnicodeUsernameValidator()],
+                                      help_text="Use the same parent username for brothers/sisters.")
+    parent_password = forms.CharField(required=False, max_length=128,
+                                      help_text="Type a new password to set or change it.")
+
     class Meta:
         model = Student
-        exclude = []
+        exclude = ["user", "parent_user"]
         widgets = {"address": forms.Textarea(attrs={"rows": 2})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["student_username"].section = "Login details"
+        s = self.instance
+        for prefix, user in (("student", s.user if s.pk else None), ("parent", s.parent_user if s.pk else None)):
+            if user:
+                self.fields[f"{prefix}_username"].initial = user.username
+                self.fields[f"{prefix}_password"].initial = user.profile.issued_password
+
+    def _check(self, prefix, current, role):
+        username = self.cleaned_data.get(f"{prefix}_username", "").strip()
+        password = self.cleaned_data.get(f"{prefix}_password", "")
+        if not username:
+            return
+        other = User.objects.filter(username__iexact=username).exclude(pk=getattr(current, "pk", None)).first()
+        if other:
+            if role == Role.PARENT and user_role(other) == Role.PARENT:
+                return  # existing parent login (sibling) – just link it
+            self.add_error(f"{prefix}_username", "This username is already used by someone else.")
+            return
+        if not current and not password:
+            self.add_error(f"{prefix}_password", "Enter a password for the new login.")
+        if password and len(password) < 4:
+            self.add_error(f"{prefix}_password", "Use at least 4 characters.")
+
+    def clean(self):
+        data = super().clean()
+        su = data.get("student_username", "").strip().lower()
+        pu = data.get("parent_username", "").strip().lower()
+        if su and su == pu:
+            self.add_error("parent_username", "Student and parent need different usernames.")
+        s = self.instance
+        self._check("student", s.user if s.pk else None, Role.STUDENT)
+        self._check("parent", s.parent_user if s.pk else None, Role.PARENT)
+        return data
+
+    def _login(self, prefix, current, role, first, last):
+        """Create, rename, re-link or update the login for this student or parent."""
+        username = self.cleaned_data.get(f"{prefix}_username", "").strip()
+        password = self.cleaned_data.get(f"{prefix}_password", "")
+        if not username:
+            return None  # login unlinked from this student (the account itself is kept)
+
+        same_name = User.objects.filter(username__iexact=username).first()
+        if same_name:
+            user = same_name  # this student's own login, or a sibling's parent login
+        elif current and not (role == Role.PARENT and current.children.exclude(pk=self.instance.pk).exists()):
+            user = current    # rename this login
+        else:
+            user = User(first_name=first, last_name=last)  # new login (or this child gets its own parent login)
+        user.username = username
+
+        if not user.pk:
+            user.set_password(password)
+        elif password and password != user.profile.issued_password:
+            user.set_password(password)
+        user.save()
+        profile = user.profile
+        profile.role = role
+        if password:
+            profile.issued_password = password
+        profile.save()
+        return user
+
+    def save(self, commit=True):
+        s = self.instance
+        before_student = s.user if s.pk else None
+        before_parent = s.parent_user if s.pk else None
+        student = super().save(commit=False)
+        student.user = self._login("student", before_student, Role.STUDENT, student.first_name, student.last_name)
+        parent_name = student.father_name or student.mother_name or f"Parent of {student.first_name}"
+        student.parent_user = self._login("parent", before_parent, Role.PARENT, parent_name, "")
+        if commit:
+            student.save()
+            self.save_m2m()
+        return student
 
 
 def _class_choices():
@@ -54,7 +143,8 @@ def can_view_student(user, student):
 
 @login_required
 def student_detail(request, pk):
-    student = get_object_or_404(Student.objects.select_related("classroom"), pk=pk)
+    student = get_object_or_404(Student.objects.select_related(
+        "classroom", "user__profile", "parent_user__profile"), pk=pk)
     if not can_view_student(request.user, student):
         raise PermissionDenied
     role = user_role(request.user)
@@ -64,6 +154,7 @@ def student_detail(request, pk):
     att = student.attendance.all()
     return render(request, "students/detail.html", {
         "s": student,
+        "logins": [("Student login", student.user), ("Parent login", student.parent_user)],
         "attendance_pct": attendance_percent(att),
         "recent_attendance": att[:30],
         "ledger": fee_ledger(student),

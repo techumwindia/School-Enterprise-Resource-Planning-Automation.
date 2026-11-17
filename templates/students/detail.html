@@ -27,6 +27,30 @@
         <li class="list-group-item"><span class="text-muted">Address</span><br>{{ s.address|default:"—"|linebreaksbr }}</li>
       </ul>
     </div>
+    {% if user_role == 'admin' %}
+    <div class="card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-key"></i> Login details</span>
+        <a class="btn btn-sm btn-light" href="{% url 'students:student_edit' s.pk %}"><i class="bi bi-pencil"></i> Change</a>
+      </div>
+      <ul class="list-group list-group-flush small">
+        {% for label, u in logins %}
+        <li class="list-group-item">
+          <div class="text-muted">{{ label }}</div>
+          {% if u %}
+            <div class="d-flex justify-content-between"><span>Username</span><strong class="font-monospace">{{ u.username }}</strong></div>
+            <div class="d-flex justify-content-between"><span>Password</span>
+              {% if u.profile.issued_password %}<strong class="font-monospace">{{ u.profile.issued_password }}</strong>
+              {% else %}<span class="text-muted fst-italic">changed by user — set a new one in Edit</span>{% endif %}</div>
+            {% if not u.is_active %}<div class="text-danger">Login disabled</div>{% endif %}
+          {% else %}
+            <span class="text-muted fst-italic">No login yet — add one in Edit</span>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
     <div class="card">
       <div class="card-header">Attendance — {% if attendance_pct is not None %}{{ attendance_pct }}%{% else %}no records{% endif %}</div>
       <div class="card-body small">

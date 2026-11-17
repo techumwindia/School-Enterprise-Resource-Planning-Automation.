@@ -11,6 +11,7 @@
       {{ form.non_field_errors }}
       <div class="row g-3">
       {% for field in form %}
+        {% if field.field.section %}<div class="col-12 mt-4"><h2 class="h6 fw-bold border-bottom pb-2 mb-0">{{ field.field.section }}</h2></div>{% endif %}
         {% with w=field.field.widget.input_type %}
         <div class="{% if field.field.widget.attrs.rows or field.field.widget.allow_multiple_selected %}col-12{% else %}col-md-6{% endif %}">
           {% if field.field.widget.allow_multiple_selected and w == 'checkbox' %}
